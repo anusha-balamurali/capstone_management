@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Capstone Management Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        /* Hide all screens by default */
+        .screen { display: none; }
+        .page { display: none; }
+        .page.active { display: block; }
+        .modal {
+            display: none; position: fixed; z-index: 100;
+            left: 0; top: 0; width: 100%; height: 100%;
+            overflow: auto; background-color: rgba(0,0,0,0.4);
+            padding-top: 60px;
+        }
+        .modal-content {
+            background-color: #fefefe; margin: 5% auto; padding: 24px;
+            border: 1px solid #888; width: 80%;
+            max-width: 600px; border-radius: 8px;
+        }
+        /* Loading indicator */
+        .loader {
+            border: 4px solid #f3f3f3; /* Light grey */
+            border-top: 4px solid #3498db; /* Blue */
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="h-full">
+
+    <!-- Global Header (for logged-in users) -->
+    <nav id="global-nav" class="bg-gray-800 hidden">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div class="flex h-16 items-center justify-between">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <svg class="h-8 w-8 text-indigo-500" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>
+                    </div>
+                    <div id="nav-links" class="hidden md:block ml-10 flex items-baseline space-x-4">
+                        <!-- Nav links injected by JS -->
+                    </div>
+                </div>
+                <div class="hidden md:block">
+                    <div class="ml-4 flex items-center md:ml-6">
+                        <span id="welcome-message" class="text-gray-300 mr-4"></span>
+                        <button id="logout-btn" class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                            Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- Global Header Title -->
+    <header id="global-header" class="bg-white shadow hidden">
+        <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+            <h1 id="page-title" class="text-3xl font-bold tracking-tight text-gray-900">Dashboard</h1>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main>
+        <div class="mx-auto max-w-7xl py-6 sm:px-6 lg:px-8">
+            <!-- Custom Message Box -->
+            <div id="message-box" class="hidden my-4 p-4 rounded-md">
+                <p id="message-text"></p>
+            </div>
+
+            <!-- ======================= -->
+            <!--    Screen: Login        -->
+            <!-- ======================= -->
+            <div id="login-screen" class="screen" style="display: block;">
+                <div class="flex min-h-full flex-col justify-center px-6 py-12 lg:px-8">
+                    <div class="sm:mx-auto sm:w-full sm:max-w-md">
+                        <svg class="mx-auto h-12 w-auto text-indigo-600" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"></path></svg>
+                        <h2 class="mt-6 text-center text-3xl font-bold tracking-tight text-gray-900">Capstone Management System</h2>
+                        <p class="mt-2 text-center text-sm text-gray-600">Please select your role to continue.</p>
+                    </div>
+
+                    <div class="mt-10 sm:mx-auto sm:w-full sm:max-w-md">
+                        <div class="bg-white px-6 py-8 shadow sm:rounded-lg sm:px-10 space-y-6">
+                            <!-- Faculty Login -->
+                            <div>
+                                <label for="faculty-select" class="block text-sm font-medium leading-6 text-gray-900">Login as Faculty</label>
+                                <select id="faculty-select" class="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600">
+                                    <option value="">Select your name...</option>
+                                    <!-- Faculty names injected here -->
+                                </select>
+                                <button id="faculty-login-btn" class="mt-4 flex w-full justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                                    Login as Faculty
+                                </button>
+                            </div>
+
+                            <div class="relative"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-300"></div></div><div class="relative flex justify-center text-sm"><span class="bg-white px-2 text-gray-500">or</span></div></div>
+
+                            <!-- Student Login -->
+                            <div>
+                                <label for="student-select" class="block text-sm font-medium leading-6 text-gray-900">Login as Student</label>
+                                <select id="student-select" class="mt-2 block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600">
+                                    <option value="">Select your name...</option>
+                                    <!-- Student names injected here -->
+                                </select>
+                                <button id="student-login-btn" class="mt-4 flex w-full justify-center rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500">
+                                    Login as Student
+                                </button>
+                            </div>
+
+                            <div class="relative"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-300"></div></div><div class="relative flex justify-center text-sm"><span class="bg-white px-2 text-gray-500">or</span></div></div>
+                            
+                            <!-- Admin Login -->
+                            <button id="admin-login-btn" class="flex w-full justify-center rounded-md bg-gray-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-gray-500">
+                                Login as Admin
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ======================= -->
+            <!-- Screen: Faculty Dashboard -->
+            <!-- ======================= -->
+            <div id="faculty-dashboard-screen" class="screen">
+                <!-- Faculty-specific pages go here -->
+                <div id="faculty-dashboard-page" class="page">
+                    <h2 class="text-xl font-semibold text-gray-900">Faculty Dashboard</h2>
+                    <p class="mt-1 text-sm text-gray-600">Overview of your teams and reviews.</p>
+                    <div class="loader hidden"></div> <!-- Loading indicator -->
+                    
+                    <div id="faculty-content" class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+                        <!-- My Mentored Teams -->
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <h3 class="font-medium text-gray-900">My Mentored Teams</h3>
+                            <div id="faculty-teams-list" class="mt-4 space-y-4">
+                                <!-- Data injected here -->
+                            </div>
+                        </div>
+                        <!-- My Panel Reviews -->
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <h3 class="font-medium text-gray-900">My Upcoming Panel Reviews</h3>
+                            <div id="faculty-reviews-list" class="mt-4 space-y-4">
+                                <!-- Data injected here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Faculty Actions Page -->
+                <div id="faculty-actions-page" class="page">
+                    <h2 class="text-xl font-semibold text-gray-900">Faculty Actions</h2>
+                    <p class="mt-1 text-sm text-gray-600">Log meetings and submit evaluations for any team/student.</p>
+                    <div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                        <button id="show-add-eval-modal" class="text-left p-6 bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
+                            <h3 class="font-medium text-gray-900">Submit Evaluation</h3>
+                            <p class="mt-1 text-sm text-gray-500">Submit marks for a student review.</p>
+                        </button>
+                        <button id="show-log-meeting-modal" class="text-left p-6 bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
+                            <h3 class="font-medium text-gray-900">Log Meeting</h3>
+                            <p class="mt-1 text-sm text-gray-500">Log a new meeting with one of your teams.</p>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ======================= -->
+            <!-- Screen: Student Dashboard -->
+            <!-- ======================= -->
+            <div id="student-dashboard-screen" class="screen">
+                <div class="loader hidden"></div> <!-- Loading indicator -->
+                <div id="student-content" class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+                    <!-- Left Column: My Team & Project -->
+                    <div class="lg:col-span-2 space-y-6">
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <h3 class="font-medium text-gray-900">My Project</h3>
+                            <div id="student-project-info">
+                                <!-- Data injected here -->
+                            </div>
+                        </div>
+                        <div class="bg-white p-6 rounded-lg shadow">
+                            <h3 class="font-medium text-gray-900">My Team</h3>
+                            <div id="student-team-info">
+                                <!-- Data injected here -->
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Right Column: My Grades -->
+                    <div class="lg:col-span-1 bg-white p-6 rounded-lg shadow">
+                        <h3 class="font-medium text-gray-900">My Evaluations</h3>
+                        <div id="student-evals-list" class="mt-4 space-y-4">
+                            <!-- Data injected here -->
+                        </div>
+                        <div class="mt-6 border-t pt-4">
+                            <p id="student-total-marks" class="text-lg font-bold text-gray-900"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ======================= -->
+            <!--  Screen: Admin Dashboard  -->
+            <!-- ======================= -->
+            <div id="admin-dashboard-screen" class="screen">
+                <!-- This holds the "Admin" pages, which are more powerful -->
+                
+                <!-- Page: Admin Dashboard -->
+                <div id="admin-dashboard-page" class="page">
+                    <h2 class="text-xl font-semibold text-gray-900">All Projects Dashboard (Admin)</h2>
+                    <p class="mt-1 text-sm text-gray-600">Overview of all active projects.</p> <!-- Changed description -->
+                    <button id="load-projects-btn" class="mt-4 rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                        Load/Refresh Projects
+                    </button>
+                     <div class="loader hidden"></div> <!-- Loading indicator -->
+                    <div id="projects-list" class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                        <div class="col-span-full text-center p-8 border rounded-lg border-dashed text-gray-500">Click "Load Projects" to see data.</div>
+                    </div>
+                </div>
+
+                <!-- Page: Admin Team Management -->
+                <div id="admin-teams-page" class="page">
+                    <div class="sm:flex sm:items-center">
+                        <div class="sm:flex-auto">
+                            <h2 class="text-xl font-semibold text-gray-900">Team Management (Admin)</h2>
+                            <p class="mt-1 text-sm text-gray-600">Create new teams and view all existing ones.</p>
+                        </div>
+                        <div class="mt-4 sm:ml-16 sm:mt-0 sm:flex-none">
+                            <button id="show-create-team-modal" class="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                                Create New Team
+                            </button>
+                        </div>
+                    </div>
+                    <div class="loader hidden"></div> <!-- Loading indicator -->
+                    <div id="teams-list" class="mt-8 flow-root">
+                        <!-- Teams list will be injected here -->
+                    </div>
+                </div>
+
+                <!-- Page: Admin Actions -->
+                <div id="admin-actions-page" class="page">
+                    <h2 class="text-xl font-semibold text-gray-900">Admin Actions</h2>
+                    <p class="mt-1 text-sm text-gray-600">Full administrative powers.</p>
+                    <div class="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                        <button id="show-create-project-modal" class="text-left p-6 bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
+                            <h3 class="font-medium text-gray-900">Create Project</h3>
+                            <p class="mt-1 text-sm text-gray-500">Assign a new project title to a team.</p>
+                        </button>
+                        <button id="show-add-review-modal" class="text-left p-6 bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
+                            <h3 class="font-medium text-gray-900">Schedule Review</h3>
+                            <p class="mt-1 text-sm text-gray-500">Schedule a new review for any team.</p>
+                        </button>
+                        <button id="show-add-eval-modal-admin" class="text-left p-6 bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
+                            <h3 class="font-medium text-gray-900">Submit Evaluation</h3>
+                            <p class="mt-1 text-sm text-gray-500">Submit marks for a student review.</p>
+                        </button>
+                        <button id="show-log-meeting-modal-admin" class="text-left p-6 bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
+                            <h3 class="font-medium text-gray-900">Log Meeting</h3>
+                            <p class="mt-1 text-sm text-gray-500">Log a new meeting for any team.</p>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Page: Admin Reports -->
+                <div id="admin-reports-page" class="page">
+                    <h2 class="text-xl font-semibold text-gray-900">Reports (Admin)</h2>
+                    <p class="mt-1 text-sm text-gray-600">Generate various reports from the system data.</p> <!-- Changed description -->
+                    <!-- Reports content -->
+                    <div class="mt-6 bg-white p-6 rounded-lg shadow">
+                        <h3 class="font-medium text-gray-900">Faculty Workload</h3>
+                        <p class="mt-1 text-sm text-gray-500">Shows number of teams per mentor.</p> <!-- Changed description -->
+                        <button id="load-workload-btn" class="mt-4 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">Load Workload</button>
+                         <div class="loader hidden"></div> <!-- Loading indicator -->
+                        <table class="mt-4 min-w-full divide-y divide-gray-300"><thead class="bg-gray-50"><tr><th class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900">Faculty ID</th><th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Faculty Name</th><th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Team ID</th><th class="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">Team Size</th></tr></thead><tbody id="workload-table" class="divide-y divide-gray-200 bg-white"></tbody></table>
+                    </div>
+                    <div class="mt-6 bg-white p-6 rounded-lg shadow">
+                        <h3 class="font-medium text-gray-900">Student Total Marks</h3>
+                        <!-- REMOVED description line -->
+                        <form id="student-marks-form" class="mt-4 flex items-end gap-4">
+                            <select id="student-marks-srn" class="student-dropdown mt-1 block w-full rounded-md border-gray-300 shadow-sm"></select>
+                            <button type="submit" class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">Get Marks</button>
+                        </form>
+                        <p id="student-marks-result" class="mt-4 text-lg font-medium text-gray-900"></p>
+                    </div>
+                    <div class="mt-6 bg-white p-6 rounded-lg shadow">
+                        <h3 class="font-medium text-gray-900">Team Average Marks for Review</h3>
+                         <!-- REMOVED description line -->
+                        <form id="team-avg-form" class="mt-4 flex items-end gap-4">
+                            <input type="number" id="team-avg-team" placeholder="Team ID" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                            <input type="number" id="team-avg-review" placeholder="Review ID" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                            <button type="submit" class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">Get Average</button>
+                        </form>
+                        <p id="team-avg-result" class="mt-4 text-lg font-medium text-gray-900"></p>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+    </main>
+
+    <!-- All Modals (re-used by Admin/Faculty) -->
+    <!-- Modal: Create Team -->
+    <div id="create-team-modal" class="modal"><div class="modal-content">
+        <h2 class="text-xl font-semibold text-gray-900">Create New Team</h2>
+        <form id="create-team-form" class="mt-6 space-y-6">
+            <select name="mentor_id" class="faculty-dropdown block w-full rounded-md border-gray-300 shadow-sm" required></select>
+            <select name="student_srns" multiple class="student-dropdown block w-full rounded-md border-gray-300 shadow-sm h-40" required></select>
+            <p class="mt-1 text-xs text-gray-500">Hold Ctrl (or Cmd) to select multiple students (Max 4).</p>
+            <div class="flex gap-4"><button type="submit" class="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">Create Team</button><button type="button" class="modal-close-btn rounded-md bg-white px-3.5 py-2.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">Cancel</button></div>
+        </form>
+    </div></div>
+    <!-- Modal: Create Project -->
+    <div id="create-project-modal" class="modal"><div class="modal-content">
+        <h2 class="text-xl font-semibold text-gray-900">Create New Project</h2>
+        <form id="create-project-form" class="mt-6 space-y-6">
+            <input type="text" name="title" placeholder="Project Title" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300" required>
+            <select name="team_id" class="team-dropdown block w-full rounded-md border-gray-300 shadow-sm" required></select>
+            <div class="flex gap-4"><button type="submit" class="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">Create Project</button><button type="button" class="modal-close-btn rounded-md bg-white px-3.5 py-2.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">Cancel</button></div>
+        </form>
+    </div></div>
+    <!-- Modal: Add Review -->
+    <div id="add-review-modal" class="modal"><div class="modal-content">
+        <h2 class="text-xl font-semibold text-gray-900">Schedule a New Review</h2>
+        <form id="review-form" class="mt-6 space-y-6">
+            <input type="number" name="rev_type_id" placeholder="Review Type ID (1=ISA1, 2=ISA2, 3=ESA)" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300" required>
+            <select name="team_id" class="team-dropdown block w-full rounded-md border-gray-300 shadow-sm" required></select>
+            <input type="date" name="rev_date" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300" required>
+            <input type="text" name="venue" placeholder="Venue (e.g., Room A-101)" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300"> <!-- Venue optional -->
+            <input type="text" name="panel_faculty_ids" placeholder="Panel Faculty IDs (e.g., 101,102)" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300" required>
+            <p class="mt-1 text-xs text-gray-500">Team mentor will be automatically included if not listed.</p>
+            <div class="flex gap-4"><button type="submit" class="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">Submit Review</button><button type="button" class="modal-close-btn rounded-md bg-white px-3.5 py-2.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">Cancel</button></div>
+        </form>
+    </div></div>
+    <!-- Modal: Add Evaluation -->
+    <div id="add-eval-modal" class="modal"><div class="modal-content">
+        <h2 class="text-xl font-semibold text-gray-900">Submit Student Evaluation</h2>
+        <form id="eval-form" class="mt-6 space-y-6">
+            <select name="faculty_id" class="faculty-dropdown block w-full rounded-md border-gray-300 shadow-sm" required></select>
+            <select name="srn" class="student-dropdown block w-full rounded-md border-gray-300 shadow-sm" required></select>
+            <input type="number" name="rubric_id" placeholder="Rubric ID (e.g., 1)" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300" required>
+            <input type="number" name="project_id" placeholder="Project ID (e.g., 1)" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300" required>
+            <input type="number" name="review_id" placeholder="Review ID (e.g., 1)" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300" required>
+            <input type="number" name="marks" step="0.1" placeholder="Marks (e.g., 8.5)" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300" required>
+            <textarea name="comments" placeholder="Comments..." rows="3" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300"></textarea>
+            <div class="flex gap-4"><button type="submit" class="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">Submit Evaluation</button><button type="button" class="modal-close-btn rounded-md bg-white px-3.5 py-2.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">Cancel</button></div>
+        </form>
+    </div></div>
+    <!-- Modal: Log Meeting -->
+    <div id="log-meeting-modal" class="modal"><div class="modal-content">
+        <h2 class="text-xl font-semibold text-gray-900">Log a Meeting</h2>
+        <form id="log-meeting-form" class="mt-6 space-y-6">
+            <select name="faculty_id" class="faculty-dropdown block w-full rounded-md border-gray-300 shadow-sm" required></select>
+            <select name="team_id" class="team-dropdown block w-full rounded-md border-gray-300 shadow-sm" required></select>
+            <input type="datetime-local" name="datetime" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300" required>
+            <textarea name="feedback" placeholder="Meeting feedback..." rows="3" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300"></textarea>
+            <div class="flex gap-4"><button type="submit" class="rounded-md bg-indigo-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">Log Meeting</button><button type="button" class="modal-close-btn rounded-md bg-white px-3.5 py-2.5 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50">Cancel</button></div>
+        </form>
+    </div></div>
+
+    <!-- ======================= -->
+    <!--  JavaScript             -->
+    <!-- ======================= -->
+    <script>
+        const API_URL = 'http://127.0.0.1:5000';
+
+        // --- Global State ---
+        let currentUser = null; // { role: 'faculty', id: 101, name: 'Dr. Ramesh' }
+        let allStudents = [];
+        let allFaculty = [];
+        let allTeams = [];
+
+        // --- DOM Elements ---
+        const loginScreen = document.getElementById('login-screen');
+        const facultyDashboardScreen = document.getElementById('faculty-dashboard-screen');
+        const studentDashboardScreen = document.getElementById('student-dashboard-screen');
+        const adminDashboardScreen = document.getElementById('admin-dashboard-screen');
+        
+        const globalNav = document.getElementById('global-nav');
+        const globalHeader = document.getElementById('global-header');
+        const welcomeMessage = document.getElementById('welcome-message');
+        const pageTitle = document.getElementById('page-title');
+        
+        const facultySelect = document.getElementById('faculty-select');
+        const studentSelect = document.getElementById('student-select');
+        
+        const messageBox = document.getElementById('message-box');
+        const messageText = document.getElementById('message-text');
+
+        // --- Helper: Show Message Box ---
+        function showMessage(message, isError = false) {
+            messageText.textContent = message;
+            messageBox.classList.remove('hidden');
+            messageBox.classList.toggle('bg-red-100', isError);
+            messageBox.classList.toggle('text-red-800', isError);
+            messageBox.classList.toggle('bg-green-100', !isError);
+            messageBox.classList.toggle('text-green-800', !isError);
+            window.scrollTo(0, 0);
+            setTimeout(() => { messageBox.classList.add('hidden'); }, 5000);
+        }
+
+        // --- Helper: API Fetch Function ---
+        async function apiFetch(endpoint, options = {}) {
+            // Show loading indicator before fetch
+            const loaders = document.querySelectorAll('.loader');
+            loaders.forEach(loader => loader.classList.remove('hidden'));
+
+            try {
+                const response = await fetch(`${API_URL}${endpoint}`, options);
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error || `HTTP error! status: ${response.status}`);
+                }
+                 loaders.forEach(loader => loader.classList.add('hidden')); // Hide on success
+                return result;
+            } catch (error) {
+                showMessage(`API Error: ${error.message}`, true);
+                loaders.forEach(loader => loader.classList.add('hidden')); // Hide on error
+                throw error;
+            }
+        }
+
+
+        // --- Helper: Show/Hide Screens ---
+        function showScreen(screenId) {
+            [loginScreen, facultyDashboardScreen, studentDashboardScreen, adminDashboardScreen].forEach(s => s.style.display = 'none');
+            document.getElementById(screenId).style.display = 'block';
+            
+            const isLoggedIn = (screenId !== 'login-screen');
+            globalNav.classList.toggle('hidden', !isLoggedIn);
+            globalHeader.classList.toggle('hidden', !isLoggedIn);
+        }
+        
+        // --- Helper: Page Navigation (for logged-in users) ---
+        function setupNav(screenId, navLinksHtml) {
+            const screen = document.getElementById(screenId);
+            const navContainer = document.getElementById('nav-links'); // Use global nav
+            navContainer.innerHTML = navLinksHtml;
+
+            const pages = screen.querySelectorAll('.page');
+            const navButtons = navContainer.querySelectorAll('.nav-btn');
+
+            navButtons.forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const pageId = e.target.dataset.page;
+                    
+                    navButtons.forEach(btn => {
+                        btn.classList.remove('bg-gray-900', 'text-white');
+                        btn.classList.add('text-gray-300', 'hover:bg-gray-700', 'hover:text-white', 'rounded-md', 'px-3', 'py-2', 'text-sm', 'font-medium');
+                    });
+                    e.target.classList.add('bg-gray-900', 'text-white');
+                    e.target.classList.remove('text-gray-300', 'hover:bg-gray-700', 'hover:text-white');
+                    
+                    pages.forEach(page => page.classList.toggle('active', page.id === pageId));
+                    pageTitle.textContent = e.target.textContent;
+
+                    // Auto-load data when switching to certain admin tabs
+                     if (currentUser && currentUser.role === 'admin') {
+                        if (pageId === 'admin-dashboard-page') loadProjects();
+                        if (pageId === 'admin-teams-page') loadTeams();
+                    }
+                });
+            });
+            
+            // Activate the first page by default
+            if (navButtons.length > 0) {
+                 // Defer click slightly to ensure page elements are ready
+                setTimeout(() => navButtons[0].click(), 0);
+            }
+        }
+
+
+        // --- Data Loading: Initial (for Login Page) ---
+        async function loadLoginData() {
+            try {
+                // Show loading indicator
+                // (No specific loader here, maybe add one later if needed)
+                
+                [allStudents, allFaculty] = await Promise.all([
+                    apiFetch('/api/students'),
+                    apiFetch('/api/faculty')
+                ]);
+                
+                facultySelect.innerHTML = '<option value="">Select your name...</option>';
+                allFaculty.forEach(f => {
+                    facultySelect.innerHTML += `<option value="${f.Faculty_ID}">${f.Name}</option>`;
+                });
+                
+                studentSelect.innerHTML = '<option value="">Select your name...</option>';
+                allStudents.forEach(s => {
+                    studentSelect.innerHTML += `<option value="${s.SRN}">${s.Name} (${s.SRN})</option>`;
+                });
+            } catch (error) {
+                // Error handled by apiFetch
+                facultySelect.innerHTML = '<option value="">Could not load faculty</option>';
+                studentSelect.innerHTML = '<option value="">Could not load students</option>';
+            }
+        }
+
+        // --- Login Functions ---
+        
+        async function loginAsFaculty() {
+            const facultyId = facultySelect.value;
+            if (!facultyId) {
+                showMessage("Please select your name from the dropdown.", true);
+                return;
+            }
+            const facultyName = facultySelect.options[facultySelect.selectedIndex].text;
+            currentUser = { role: 'faculty', id: facultyId, name: facultyName };
+            
+            welcomeMessage.textContent = `Welcome, ${facultyName}`;
+            setupNav('faculty-dashboard-screen', 
+                `
+                <button class="nav-btn" data-page="faculty-dashboard-page">Dashboard</button>
+                <button class="nav-btn" data-page="faculty-actions-page">Actions</button>
+                `
+            );
+            showScreen('faculty-dashboard-screen');
+             try {
+                // Ensure dropdowns are populated *before* loading dashboard
+                await loadInitialData(); // Load all data needed for modals
+                loadFacultyDashboard(facultyId); // Now load the dashboard content
+            } catch (e) {
+                showMessage("Error preparing faculty dashboard.", true);
+            }
+        }
+
+
+        async function loginAsStudent() {
+            const srn = studentSelect.value;
+            if (!srn) {
+                showMessage("Please select your name from the dropdown.", true);
+                return;
+            }
+            const studentName = studentSelect.options[studentSelect.selectedIndex].text;
+            currentUser = { role: 'student', id: srn, name: studentName.split(' (')[0] };
+            
+            welcomeMessage.textContent = `Welcome, ${currentUser.name}`;
+            setupNav('student-dashboard-screen', ''); // No nav for students
+            showScreen('student-dashboard-screen');
+            pageTitle.textContent = "My Dashboard";
+            loadStudentDashboard(srn);
+        }
+
+        async function loginAsAdmin() {
+            currentUser = { role: 'admin', id: 'admin', name: 'Admin' };
+            welcomeMessage.textContent = "Welcome, Admin";
+            
+            // Setup full admin navigation
+            setupNav('admin-dashboard-screen',
+                `
+                <button class="nav-btn" data-page="admin-dashboard-page">Dashboard</button>
+                <button class="nav-btn" data-page="admin-teams-page">Team Management</button>
+                <button class="nav-btn" data-page="admin-actions-page">Actions</button>
+                <button class="nav-btn" data-page="admin-reports-page">Reports</button>
+                `
+            );
+            showScreen('admin-dashboard-screen');
+            
+             try {
+                // Load all data needed for admin panels and modals
+                await loadInitialData(); 
+                // Now load specific page data if needed (some are loaded on tab click)
+                loadProjects(); 
+            } catch(e) {
+                 showMessage("Error preparing admin dashboard.", true);
+            }
+        }
+        
+        function logout() {
+            currentUser = null;
+            // Clear dynamic content areas on logout
+            document.getElementById('faculty-teams-list').innerHTML = '';
+            document.getElementById('faculty-reviews-list').innerHTML = '';
+            document.getElementById('student-project-info').innerHTML = '';
+            document.getElementById('student-team-info').innerHTML = '';
+            document.getElementById('student-evals-list').innerHTML = '';
+            document.getElementById('student-total-marks').textContent = '';
+            document.getElementById('projects-list').innerHTML = '<div class="col-span-full text-center p-8 border rounded-lg border-dashed text-gray-500">Click "Load Projects" to see data.</div>';
+            document.getElementById('teams-list').innerHTML = '';
+            document.getElementById('workload-table').innerHTML = '';
+             document.getElementById('student-marks-result').textContent = '';
+            document.getElementById('team-avg-result').textContent = '';
+
+
+            showScreen('login-screen');
+            loadLoginData(); // Refresh login dropdowns
+        }
+
+        // --- Dashboard Loading Functions ---
+        
+        async function loadFacultyDashboard(facultyId) {
+             const loader = facultyDashboardScreen.querySelector('.loader');
+             const content = facultyDashboardScreen.querySelector('#faculty-content');
+             loader.classList.remove('hidden');
+             content.classList.add('hidden'); // Hide content while loading
+            try {
+                const data = await apiFetch(`/api/faculty/${facultyId}/dashboard`);
+                
+                // Populate mentored teams
+                const teamsList = document.getElementById('faculty-teams-list');
+                teamsList.innerHTML = '';
+                if (!data.mentored_teams || data.mentored_teams.length === 0) {
+                    teamsList.innerHTML = '<p class="text-sm text-gray-500">You are not mentoring any teams.</p>';
+                } else {
+                    data.mentored_teams.forEach(team => {
+                        teamsList.innerHTML += `
+                            <div class="p-3 border rounded-md">
+                                <h4 class="font-medium text-gray-800">Team ${team.Team_ID}</h4>
+                                <ul class="list-disc list-inside ml-4 text-sm text-gray-600">
+                                    ${team.Students.map(s => `<li>${s}</li>`).join('')}
+                                </ul>
+                            </div>
+                        `;
+                    });
+                }
+                
+                // Populate panel reviews
+                const reviewsList = document.getElementById('faculty-reviews-list');
+                reviewsList.innerHTML = '';
+                 if (!data.panel_reviews || data.panel_reviews.length === 0) {
+                    reviewsList.innerHTML = '<p class="text-sm text-gray-500">You have no upcoming reviews.</p>';
+                } else {
+                    data.panel_reviews.forEach(review => {
+                         const reviewDate = review.Date ? new Date(review.Date).toLocaleDateString() : 'N/A';
+                        reviewsList.innerHTML += `
+                            <div class="p-3 border rounded-md">
+                                <h4 class="font-medium text-gray-800">${review.Review_Name}: ${review.Title} (Team ${review.Team_ID})</h4>
+                                <p class="text-sm text-gray-600">${reviewDate} at ${review.Venue || 'N/A'}</p>
+                            </div>
+                        `;
+                    });
+                }
+                content.classList.remove('hidden'); // Show content
+            } catch (error) {
+                showMessage("Could not load faculty dashboard data.", true);
+                content.innerHTML = '<p class="text-red-500">Error loading data.</p>'; // Show error in content area
+                content.classList.remove('hidden');
+            } finally {
+                loader.classList.add('hidden');
+            }
+        }
+        
+        async function loadStudentDashboard(srn) {
+             const loader = studentDashboardScreen.querySelector('.loader');
+             const content = studentDashboardScreen.querySelector('#student-content');
+             loader.classList.remove('hidden');
+             content.classList.add('hidden');
+            try {
+                const data = await apiFetch(`/api/student/${srn}/dashboard`);
+                
+                const projectInfoEl = document.getElementById('student-project-info');
+                const teamInfoEl = document.getElementById('student-team-info');
+                const evalsListEl = document.getElementById('student-evals-list');
+                const totalMarksEl = document.getElementById('student-total-marks');
+
+                // Clear previous data first
+                projectInfoEl.innerHTML = '';
+                teamInfoEl.innerHTML = '';
+                evalsListEl.innerHTML = '';
+                totalMarksEl.textContent = '';
+
+
+                if (!data.team_info) {
+                    projectInfoEl.innerHTML = '<p class="text-gray-600">You are not yet assigned to a team or project.</p>';
+                } else {
+                    // Project Info
+                    projectInfoEl.innerHTML = `
+                        <h2 class="text-2xl font-bold text-gray-800">${data.team_info.Project_Title || 'N/A'}</h2>
+                        <span class="mt-2 inline-flex items-center rounded-full px-2 py-1 text-sm font-medium ${
+                            data.team_info.Project_Status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-800'
+                        }">${data.team_info.Project_Status || 'N/A'}</span>
+                    `;
+
+                    // Team Info
+                    teamInfoEl.innerHTML = `
+                        <p class="text-gray-600"><strong>Mentor:</strong> ${data.team_info.Mentor_Name || 'N/A'}</p>
+                        <p class="mt-2 text-gray-600"><strong>Team Members:</strong></p>
+                        <ul class="list-disc list-inside ml-4 text-sm text-gray-600">
+                            ${(data.team_info.Members && data.team_info.Members.length > 0) ? data.team_info.Members.map(m => `<li>${m}</li>`).join('') : '<li>No members listed.</li>'}
+                        </ul>
+                    `;
+
+                    // Evals
+                    if (!data.evaluations || data.evaluations.length === 0) {
+                        evalsListEl.innerHTML = '<p class="text-sm text-gray-500">No evaluations submitted yet.</p>';
+                    } else {
+                        data.evaluations.forEach(evl => {
+                            const reviewDate = evl.Review_Date ? new Date(evl.Review_Date).toLocaleDateString() : 'N/A';
+                            evalsListEl.innerHTML += `
+                                <div class="p-3 border rounded-md">
+                                    <div class="flex justify-between items-center">
+                                        <h4 class="font-medium text-gray-800">${evl.Review_Name || 'Review'} - ${evl.Rubric_Name || 'Rubric'}</h4>
+                                        <span class="font-bold text-lg text-indigo-600">${evl.Marks}</span>
+                                    </div>
+                                    <p class="text-sm text-gray-500">by ${evl.Faculty_Name || 'Faculty'}</p>
+                                    <p class="text-sm text-gray-600 mt-1 italic">"${evl.Comments || 'No comments.'}"</p>
+                                    <p class="text-xs text-gray-400 mt-1">Review on ${reviewDate} at ${evl.Review_Venue || 'N/A'}</p>
+                                </div>
+                            `;
+                        });
+                    }
+                    totalMarksEl.textContent = `Total Marks: ${data.total_marks || 0}`;
+                }
+                 content.classList.remove('hidden'); // Show content
+            } catch (error) {
+                showMessage("Could not load student dashboard data. Check API server.", true);
+                 content.innerHTML = '<p class="text-red-500">Error loading data.</p>'; // Show error in content area
+                 content.classList.remove('hidden');
+            } finally {
+                 loader.classList.add('hidden');
+            }
+        }
+        
+        // --- Admin Functions ---
+        const loadProjectsBtn = document.getElementById('load-projects-btn');
+        const projectsList = document.getElementById('projects-list');
+        const projectsLoader = document.querySelector('#admin-dashboard-page .loader');
+
+        async function loadProjects() {
+            projectsLoader.classList.remove('hidden');
+            projectsList.innerHTML = ''; // Clear existing
+            try {
+                const projects = await apiFetch('/api/dashboard/admin-view');
+                if (!projects || projects.length === 0) {
+                     projectsList.innerHTML = '<div class="col-span-full text-center p-8 border rounded-lg border-dashed text-gray-500">No projects found.</div>';
+                     return;
+                }
+                projects.forEach(proj => {
+                    const card = document.createElement('div');
+                    card.className = 'col-span-1 divide-y divide-gray-200 rounded-lg bg-white shadow';
+                     const reviewDate = proj.Review_Date ? new Date(proj.Review_Date).toLocaleDateString() : 'N/A';
+                    card.innerHTML = `
+                        <div class="p-6"><h3 class="font-medium text-gray-900">${proj.Project_Title || 'N/A'} (ID: ${proj.Project_ID || 'N/A'})</h3><p class="mt-1 text-sm text-gray-500">Team ${proj.Team_ID || 'N/A'} (Mentor: ${proj.Mentor_Name || 'N/A'})</p><span class="mt-2 inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${proj.Project_Status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-800'}">${proj.Project_Status || 'N/A'}</span></div>
+                        <div class="px-6 py-4 text-sm text-gray-600"><p><strong>Review:</strong> ${proj.Review_Type || 'N/A'} (ID: ${proj.Review_ID || 'N/A'})</p><p><strong>Date:</strong> ${reviewDate}</p><p><strong>Panel:</strong> ${proj.Panel_Faculty_IDs || 'N/A'}</p></div>
+                    `;
+                    projectsList.appendChild(card);
+                });
+            } catch (error) {
+                 projectsList.innerHTML = '<div class="col-span-full text-center p-8 border rounded-lg border-dashed text-red-500">Error loading projects.</div>';
+            } finally {
+                projectsLoader.classList.add('hidden');
+            }
+        }
+        if(loadProjectsBtn) loadProjectsBtn.addEventListener('click', loadProjects);
+
+        const teamsList = document.getElementById('teams-list');
+        const teamsLoader = document.querySelector('#admin-teams-page .loader');
+        async function loadTeams() {
+             teamsLoader.classList.remove('hidden');
+             teamsList.innerHTML = ''; // Clear existing
+            try {
+                allTeams = await apiFetch('/api/teams');
+                await populateDropdowns(); // Ensure dropdowns are updated after loading teams
+                if (!allTeams || allTeams.length === 0) {
+                     teamsList.innerHTML = '<p class="text-gray-500">No teams created yet.</p>';
+                     return;
+                }
+                allTeams.forEach(team => {
+                    const studentHtml = (team.Students && team.Students.length > 0) 
+                        ? team.Students.map(s => `<li class="text-sm text-gray-600">${s.Student_Name} (${s.SRN})</li>`).join('') 
+                        : '<li>No students assigned.</li>';
+                    teamsList.innerHTML += `<div class="p-4 bg-white rounded-lg shadow mb-4"><h4 class="font-medium text-gray-900">Team ${team.Team_ID}</h4><p class="text-sm text-gray-500">Mentor: ${team.Mentor_Name || 'N/A'}</p><ul class="mt-2 list-disc list-inside">${studentHtml}</ul></div>`;
+                });
+            } catch (error) {
+                teamsList.innerHTML = '<p class="text-red-500">Error loading teams.</p>';
+            } finally {
+                teamsLoader.classList.add('hidden');
+            }
+        }
+        
+        const loadWorkloadBtn = document.getElementById('load-workload-btn');
+        const workloadTable = document.getElementById('workload-table');
+        const workloadLoader = document.querySelector('#admin-reports-page .loader'); // Assuming one loader per section is fine for reports
+        if(loadWorkloadBtn) loadWorkloadBtn.addEventListener('click', async () => {
+             workloadLoader.classList.remove('hidden');
+             workloadTable.innerHTML = ''; // Clear existing
+            try {
+                const data = await apiFetch('/api/reports/mentor-workload');
+                if (!data || data.length === 0) {
+                    workloadTable.innerHTML = '<tr><td colspan="4" class="text-gray-500 p-4 text-center">No workload data found.</td></tr>';
+                    return;
+                }
+                data.forEach(row => {
+                    workloadTable.innerHTML += `<tr><td class="py-4 pl-4 pr-3 text-sm font-medium text-gray-900">${row.Faculty_ID}</td><td class="px-3 py-4 text-sm text-gray-500">${row.Faculty_Name}</td><td class="px-3 py-4 text-sm text-gray-500">${row.Team_ID}</td><td class="px-3 py-4 text-sm text-gray-500">${row.Team_Size}</td></tr>`;
+                });
+            } catch (error) {
+                 workloadTable.innerHTML = '<tr><td colspan="4" class="text-red-500 p-4 text-center">Error loading workload.</td></tr>';
+            } finally {
+                workloadLoader.classList.add('hidden');
+            }
+        });
+
+        // --- Event Listeners for FORMS (Global) ---
+        
+        // Helper to populate dropdowns
+        async function populateDropdowns() {
+            // Re-fetch only if needed, or assume data is fresh if just loaded
+             if (allStudents.length === 0 || allFaculty.length === 0 || allTeams.length === 0) {
+                try {
+                     // console.log("Refreshing dropdown data..."); // Debug log
+                     await loadInitialData(); // Call the function that fetches all three
+                 } catch (e) { return; } // Error handled in loadInitialData/apiFetch
+            } else {
+                 // console.log("Using cached dropdown data."); // Debug log
+            }
+
+
+            document.querySelectorAll('.student-dropdown').forEach(select => {
+                const currentVal = select.value; // Preserve selection if possible
+                select.innerHTML = '<option value="">Select a student...</option>';
+                allStudents.forEach(s => select.innerHTML += `<option value="${s.SRN}">${s.Name} (${s.SRN})</option>`);
+                select.value = currentVal; // Restore selection
+            });
+            document.querySelectorAll('.faculty-dropdown').forEach(select => {
+                const currentVal = select.value;
+                 select.innerHTML = '<option value="">Select faculty...</option>';
+                allFaculty.forEach(f => select.innerHTML += `<option value="${f.Faculty_ID}">${f.Name} (ID: ${f.Faculty_ID})</option>`);
+                 select.value = currentVal;
+            });
+            document.querySelectorAll('.team-dropdown').forEach(select => {
+                const currentVal = select.value;
+                select.innerHTML = '<option value="">Select a team...</option>';
+                allTeams.forEach(t => select.innerHTML += `<option value="${t.Team_ID}">Team ${t.Team_ID} (Mentor: ${t.Mentor_Name})</option>`);
+                 select.value = currentVal;
+            });
+        }
+        
+        // --- Form Submissions (used by Admin & Faculty) ---
+        // Enhanced error display
+        async function handleFormSubmit(formId, endpoint, successCallback) {
+            const form = document.getElementById(formId);
+             if (!form) {
+                 // console.error(`Form with ID ${formId} not found.`);
+                 return;
+             }
+            // Ensure listener isn't added multiple times if setupNav runs again
+            if (form.dataset.listenerAttached === 'true') {
+                 // console.log(`Listener already attached to ${formId}`);
+                 return; 
+             }
+            form.dataset.listenerAttached = 'true';
+             // console.log(`Attaching listener to ${formId}`);
+
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                 // console.log(`Form submitted: ${formId}`);
+                const submitButton = form.querySelector('button[type="submit"]');
+                if (!submitButton) {
+                    console.error(`Submit button not found in form ${formId}`);
+                    return;
+                }
+                const originalButtonText = submitButton.textContent;
+                submitButton.textContent = 'Submitting...';
+                submitButton.disabled = true;
+
+                const formData = new FormData(form);
+                let data = {};
+                
+                // Handle multi-select for students manually
+                if (formId === 'create-team-form') {
+                     const mentorSelect = form.querySelector('select[name="mentor_id"]');
+                     const studentSelect = form.querySelector('select[name="student_srns"]');
+                     if (!mentorSelect || !studentSelect) {
+                         console.error("Form elements missing in create-team-form");
+                         submitButton.textContent = originalButtonText;
+                         submitButton.disabled = false;
+                         return;
+                     }
+                     data = {
+                         mentor_id: mentorSelect.value,
+                         student_srns: Array.from(studentSelect.selectedOptions).map(option => option.value)
+                     };
+                     // Basic validation for multi-select
+                     if (!data.mentor_id || data.student_srns.length === 0) {
+                        showMessage("Mentor and at least one student are required.", true);
+                        submitButton.textContent = originalButtonText;
+                        submitButton.disabled = false;
+                        return; // Stop submission
+                     }
+                      if (data.student_srns.length > 4) {
+                        showMessage("A team cannot have more than 4 members.", true);
+                        submitButton.textContent = originalButtonText;
+                        submitButton.disabled = false;
+                        return; // Stop submission
+                     }
+                 } else {
+                     data = Object.fromEntries(formData.entries());
+                     // Convert potential number fields from string
+                     ['mentor_id', 'team_id', 'rev_type_id', 'faculty_id', 'rubric_id', 'project_id', 'review_id'].forEach(key => {
+                        if (data[key] && !isNaN(data[key])) data[key] = parseInt(data[key], 10);
+                        else if (data[key] === '') data[key] = null; // Handle empty strings for numbers if needed
+                    });
+                     if (data['marks']) data['marks'] = parseFloat(data['marks']);
+                     else if (data['marks'] === '') data['marks'] = null;
+                 }
+
+
+                try {
+                    const result = await apiFetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    showMessage(result.message || "Operation successful!"); // Use default if message missing
+                    form.reset();
+                    // Close the specific modal this form is in
+                     const modal = form.closest('.modal');
+                     if (modal) modal.style.display = 'none'; 
+                    if (successCallback) await successCallback(); // Wait for callback (e.g., reloading data)
+                } catch (error) {
+                     // Error already shown by apiFetch, but log details
+                     console.error(`Form submission error [${formId}]:`, error, "Data sent:", data);
+                 } finally {
+                    submitButton.textContent = originalButtonText;
+                    submitButton.disabled = false;
+                }
+            });
+        }
+        
+        // Re-attach listeners after login or potentially on nav clicks if needed
+        function setupFormListeners() {
+            // Clear existing listeners before adding new ones maybe? Or use dataset flag.
+             document.querySelectorAll('form').forEach(form => form.dataset.listenerAttached = 'false'); // Reset flag
+            
+            handleFormSubmit('create-team-form', '/api/team', async () => { await loadTeams(); await loadInitialData(); });
+            handleFormSubmit('create-project-form', '/api/project', loadProjects);
+            handleFormSubmit('review-form', '/api/review');
+            handleFormSubmit('eval-form', '/api/evaluation');
+            handleFormSubmit('log-meeting-form', '/api/meeting');
+        }
+
+        // Reports (Listeners are fine outside setup function as they are static)
+        const studentMarksForm = document.getElementById('student-marks-form');
+        const studentMarksResult = document.getElementById('student-marks-result');
+         if (studentMarksForm) {
+            studentMarksForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const srnSelect = document.getElementById('student-marks-srn');
+                if (!srnSelect) return;
+                const srn = srnSelect.value;
+                if (!srn) { studentMarksResult.textContent = 'Please select a student.'; return; }
+                studentMarksResult.textContent = 'Loading...'; // Loading indicator
+                try {
+                    const result = await apiFetch(`/api/reports/student-marks/${srn}`);
+                    studentMarksResult.textContent = `Total Marks: ${result.TotalMarks !== null ? result.TotalMarks : 0}`;
+                } catch (error) { studentMarksResult.textContent = 'Error loading marks.';}
+            });
+        }
+
+
+        const teamAvgForm = document.getElementById('team-avg-form');
+        const teamAvgResult = document.getElementById('team-avg-result');
+         if (teamAvgForm) {
+            teamAvgForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const teamIdInput = document.getElementById('team-avg-team');
+                const reviewIdInput = document.getElementById('team-avg-review');
+                 if (!teamIdInput || !reviewIdInput) return;
+                const teamId = teamIdInput.value;
+                const reviewId = reviewIdInput.value;
+                if (!teamId || !reviewId) { teamAvgResult.textContent = 'Please enter both IDs.'; return; }
+                 teamAvgResult.textContent = 'Loading...'; // Loading indicator
+                try {
+                    const result = await apiFetch(`/api/reports/team-average/${teamId}/${reviewId}`);
+                     // Check if AverageMarks is null or undefined, default to 0
+                     const avgMarks = result.AverageMarks !== null && result.AverageMarks !== undefined ? parseFloat(result.AverageMarks).toFixed(2) : '0.00';
+                    teamAvgResult.textContent = `Average Marks: ${avgMarks}`;
+                } catch (error) { teamAvgResult.textContent = 'Error loading average.'; }
+            });
+        }
+
+        // --- Modal Setup (Global) ---
+        // Needs careful handling to attach listeners correctly
+        function setupAllModals() {
+            // Use event delegation on the document for modal triggers
+            document.body.addEventListener('click', (event) => {
+                const target = event.target.closest('button'); // Find the closest button ancestor
+                 if (!target) return; // Exit if the click wasn't on or inside a button
+
+                 // Determine which modal to open based on button ID prefix
+                 let modalId = null;
+                 let openBtnIdPrefix = null;
+
+                 if (target.id.startsWith('show-create-team-modal')) {
+                     modalId = 'create-team-modal';
+                     openBtnIdPrefix = 'show-create-team-modal';
+                 } else if (target.id.startsWith('show-create-project-modal')) {
+                     modalId = 'create-project-modal';
+                     openBtnIdPrefix = 'show-create-project-modal';
+                 } else if (target.id.startsWith('show-add-review-modal')) {
+                     modalId = 'add-review-modal';
+                      openBtnIdPrefix = 'show-add-review-modal';
+                 } else if (target.id.startsWith('show-add-eval-modal')) {
+                     modalId = 'add-eval-modal';
+                      openBtnIdPrefix = 'show-add-eval-modal';
+                 } else if (target.id.startsWith('show-log-meeting-modal')) {
+                     modalId = 'log-meeting-modal';
+                      openBtnIdPrefix = 'show-log-meeting-modal';
+                 } else if (target.classList.contains('modal-close-btn')) {
+                     // Handle close buttons for any modal
+                     const modalToClose = target.closest('.modal');
+                     if (modalToClose) modalToClose.style.display = 'none';
+                     return; // Stop further processing for close buttons
+                 }
+
+                 // If a modal trigger was found, open it
+                 if (modalId) {
+                     const modal = document.getElementById(modalId);
+                     if (!modal) {
+                         console.error(`Modal with ID ${modalId} not found.`);
+                         return;
+                     }
+                    // Pre-fill fields if faculty is logged in
+                    if (currentUser && currentUser.role === 'faculty') {
+                        const facSelect = modal.querySelector('select[name="faculty_id"]');
+                        if (facSelect) facSelect.value = currentUser.id;
+                    }
+                    modal.style.display = "block";
+                     populateDropdowns(); // Ensure dropdowns are fresh when modal opens
+                 }
+            });
+
+            // Close modal if clicking outside content (on the background)
+            window.addEventListener('click', (event) => {
+                 if (event.target.classList.contains('modal')) {
+                    event.target.style.display = "none";
+                }
+            });
+        }
+        
+
+        // --- Centralized Data Loading ---
+        async function loadInitialData() {
+            // This function ensures all dropdown data is fetched
+             // console.log("loadInitialData called"); // Debug log
+            // Only fetch if data is not already loaded
+             if (allStudents.length > 0 && allFaculty.length > 0 && allTeams.length > 0) {
+                 // console.log("Dropdown data already loaded, populating.");
+                 await populateDropdowns(); // Just populate if data exists
+                 return;
+             }
+             // console.log("Fetching dropdown data from API...");
+            try {
+                 [allStudents, allFaculty, allTeams] = await Promise.all([
+                    apiFetch('/api/students'),
+                    apiFetch('/api/faculty'),
+                    apiFetch('/api/teams')
+                ]);
+                 await populateDropdowns();
+             } catch (error) {
+                 showMessage("Failed to load essential data for forms. Please refresh.", true);
+                 // Prevent further actions if essential data failed to load
+                 throw new Error("Essential data load failed."); 
+             }
+        }
+
+
+        // --- Login/Logout Button Listeners ---
+        document.getElementById('faculty-login-btn').addEventListener('click', loginAsFaculty);
+        document.getElementById('student-login-btn').addEventListener('click', loginAsStudent);
+        document.getElementById('admin-login-btn').addEventListener('click', loginAsAdmin);
+        document.getElementById('logout-btn').addEventListener('click', logout);
+
+        // --- Initial Page Load ---
+        async function initializeApp() {
+            setupAllModals();   // Setup modal triggers using event delegation
+            setupFormListeners(); // Setup form submissions
+            await loadLoginData(); // Load data needed for the login screen first
+         }
+
+        initializeApp();
+
+    </script>
+</body>
+</html>
+
