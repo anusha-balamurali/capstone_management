@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <style>
+    body { background: #f8f9fa; }
+    .card { border-radius: 10px; }
+    .table thead { background: #e9f5ff; }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="#">Admin Dashboard</a>
+    <div class="d-flex">
+      <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm">Logout</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container py-4">
+
+  <!-- Header + Actions -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">Admin Console</h2>
+    <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#adminActionsModal">
+      <i class="bi bi-gear-fill"></i> Actions
+    </button>
+  </div>
+
+  <!-- Summary cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-2">
+      <div class="card p-3 text-center">
+        <h6>Students</h6>
+        <h3>{{ totals.students }}</h3>
+      </div>
+    </div>
+    <div class="col-md-2">
+      <div class="card p-3 text-center">
+        <h6>Faculty</h6>
+        <h3>{{ totals.faculty }}</h3>
+      </div>
+    </div>
+    <div class="col-md-2">
+      <div class="card p-3 text-center">
+        <h6>Projects</h6>
+        <h3>{{ totals.projects }}</h3>
+      </div>
+    </div>
+    <div class="col-md-2">
+      <div class="card p-3 text-center">
+        <h6>Teams</h6>
+        <h3>{{ totals.teams }}</h3>
+      </div>
+    </div>
+    <div class="col-md-2">
+      <div class="card p-3 text-center">
+        <h6>Reviews</h6>
+        <h3>{{ totals.reviews }}</h3>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <ul class="nav nav-tabs mb-3" id="adminTabs" role="tablist">
+    <li class="nav-item" role="presentation"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-students">Students</button></li>
+    <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-faculty">Faculty</button></li>
+    <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-projects">Projects</button></li>
+    <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-teams">Teams</button></li>
+    <li class="nav-item" role="presentation"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-reviews">Reviews</button></li>
+  </ul>
+
+  <div class="tab-content">
+    <!-- STUDENTS -->
+    <div class="tab-pane fade show active" id="tab-students">
+      <div class="card mb-3 p-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="mb-0">All Students</h5>
+          <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#adminActionsModal">Add Student</button>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-striped">
+            <thead>
+              <tr><th>SRN</th><th>Name</th><th>Email</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+              {% for s in students %}
+              <tr>
+                <td>{{ s.SRN }}</td>
+                <td>{{ s.Name }}</td>
+                <td>{{ s.Email or '' }}</td>
+                <td>
+                  <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editStudentModal" data-srn="{{ s.SRN }}" data-name="{{ s.Name }}" data-email="{{ s.Email or '' }}">Edit</button>
+                  <form method="POST" action="{{ url_for('admin_delete_student') }}" class="d-inline">
+                    <input type="hidden" name="srn" value="{{ s.SRN }}">
+                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this student?')">Delete</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- FACULTY -->
+    <div class="tab-pane fade" id="tab-faculty">
+      <div class="card mb-3 p-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="mb-0">All Faculty</h5>
+          <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#adminActionsModal">Add Faculty</button>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-striped">
+            <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Teams Mentored</th><th>Actions</th></tr></thead>
+            <tbody>
+              {% for f in faculty %}
+              <tr>
+                <td>{{ f.Faculty_ID }}</td>
+                <td>{{ f.Name }}</td>
+                <td>{{ f.Email or '' }}</td>
+                 <td>
+                  {% if f.TeamIDs %}
+                    {% for tid in f.TeamIDs.split(',') %}
+                      <span class="badge bg-info text-dark">Team {{ tid.strip() }}</span>
+                    {% endfor %}
+                  {% else %}
+                    <span class="text-muted">None</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editFacultyModal" data-fid="{{ f.Faculty_ID }}" data-name="{{ f.Name }}" data-email="{{ f.Email or '' }}">Edit</button>
+                  <form method="POST" action="{{ url_for('admin_delete_faculty') }}" class="d-inline">
+                    <input type="hidden" name="faculty_id" value="{{ f.Faculty_ID }}">
+                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this faculty?')">Delete</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PROJECTS -->
+    <div class="tab-pane fade" id="tab-projects">
+      <div class="card mb-3 p-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="mb-0">All Projects</h5>
+          <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#adminActionsModal">Add Project</button>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-striped">
+            <thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Team</th><th>Actions</th></tr></thead>
+            <tbody>
+              {% for p in projects %}
+              <tr>
+                <td>{{ p.Project_ID }}</td>
+                <td>{{ p.Title }}</td>
+                <td>{{ p.Status }}</td>
+                <td>{{ p.Team_ID or 'Unassigned' }}</td>
+                <td>
+                  <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#editProjectModal" data-pid="{{ p.Project_ID }}" data-title="{{ p.Title }}" data-desc="{{ p.Description or '' }}" data-status="{{ p.Status }}">Edit</button>
+                  <form method="POST" action="{{ url_for('admin_delete_project') }}" class="d-inline">
+                    <input type="hidden" name="project_id" value="{{ p.Project_ID }}">
+                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this project?')">Delete</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TEAMS -->
+    <div class="tab-pane fade" id="tab-teams">
+      <div class="card mb-3 p-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="mb-0">All Teams</h5>
+          <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#adminActionsModal">Create Team</button>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-striped">
+            <thead><tr><th>Team ID</th><th>Faculty</th><th>Members</th><th>Actions</th></tr></thead>
+            <tbody>
+              {% for t in teams %}
+              <tr>
+                <td>{{ t.Team_ID }}</td>
+                <td>{{ t.Faculty_ID or 'Unassigned' }}</td>
+                <td>{{ t.Members or 'No members' }}</td>
+                <td>
+                  <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#assignFacultyModal" data-team="{{ t.Team_ID }}">Assign Faculty</button>
+                  <!-- New: Manage Members -->
+                  <button class="btn btn-sm btn-outline-primary ms-2"
+                          data-bs-toggle="modal"
+                          data-bs-target="#manageMembersModal"
+                          data-team="{{ t.Team_ID }}"
+                          data-members="{{ t.Members }}">
+                    Manage Members
+                  </button>
+                  <form method="POST" action="{{ url_for('admin_delete_team') }}" class="d-inline">
+                    <input type="hidden" name="team_id" value="{{ t.Team_ID }}">
+                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this team?')">Delete</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- REVIEWS -->
+    <div class="tab-pane fade" id="tab-reviews">
+      <div class="card mb-3 p-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="mb-0">All Reviews</h5>
+          <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#adminActionsModal">
+            Schedule Review
+          </button>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-striped align-middle">
+            <thead class="table-info">
+              <tr>
+                <th>Review ID</th>
+                <th>Team</th>
+                <th>Project</th>
+                <th>Type</th>
+                <th>Date</th>
+                <th>Venue</th>
+                <th>Faculty Panel</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in reviews %}
+              <tr>
+                <td>{{ r.Review_ID }}</td>
+                <td>{{ r.Team_ID or 'N/A' }}</td>
+                <td>{{ r.ProjectTitle or 'N/A' }}</td>
+                <td>{{ r.ReviewType or 'N/A' }}</td>
+                <td>{{ r.Date or 'TBD' }}</td>
+                <td>{{ r.Venue or 'TBD' }}</td>
+                <td>
+                  {% if r.FacultyPanel %}
+                    {% for fid in r.FacultyPanel.split(',') %}
+                      <span class="badge bg-secondary">{{ fid.strip() }}</span>
+                    {% endfor %}
+                  {% else %}
+                    <span class="text-muted">None</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <!-- View Details -->
+                  <button class="btn btn-sm btn-info text-white"
+                          data-bs-toggle="modal"
+                          data-bs-target="#viewReviewModal"
+                          data-review-id="{{ r.Review_ID }}"
+                          data-review-type="{{ r.ReviewType }}"
+                          data-team="{{ r.Team_ID }}"
+                          data-project="{{ r.ProjectTitle }}"
+                          data-date="{{ r.Date }}"
+                          data-venue="{{ r.Venue }}"
+                          data-panel="{{ r.FacultyPanel }}">
+                    View Details
+                  </button>
+
+                  <button class="btn btn-sm btn-outline-secondary" 
+                          data-bs-toggle="modal" 
+                          data-bs-target="#editReviewModal"
+                          data-reviewid="{{ r.Review_ID }}"
+                          data-date="{{ r.Date }}"
+                          data-venue="{{ r.Venue }}"
+                          data-panel="{{ r.FacultyPanel }}">
+                    Edit
+                  </button>
+
+                  <form method="POST" action="{{ url_for('admin_delete_review') }}" class="d-inline">
+                    <input type="hidden" name="review_id" value="{{ r.Review_ID }}">
+                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this review?')">Delete</button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+
+  </div>
+</div>
+
+<!-- ADMIN ACTIONS MODAL (top-right button opens this) -->
+<div class="modal fade" id="adminActionsModal" tabindex="-1" aria-labelledby="adminActionsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-dark text-white">
+        <h5 class="modal-title" id="adminActionsModalLabel">Admin Actions</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="list-group">
+          <div class="list-group-item py-3">
+            <h6 class="mb-2"><i class="bi bi-person-plus"></i> Add New Student</h6>
+            <form method="POST" action="{{ url_for('admin_add_student') }}" class="row gy-2">
+              <div class="col-md-4"><input name="srn" class="form-control" placeholder="SRN" required></div>
+              <div class="col-md-4"><input name="name" class="form-control" placeholder="Name" required></div>
+              <div class="col-md-4"><input name="email" class="form-control" placeholder="Email"></div>
+              <div class="col-md-4"><input name="sem" class="form-control" placeholder="Sem"></div>
+              <div class="col-12 text-end"><button class="btn btn-primary">Add Student</button></div>
+            </form>
+          </div>
+
+          <div class="list-group-item py-3">
+            <h6 class="mb-2"><i class="bi bi-person-plus-fill"></i> Add New Faculty</h6>
+            <form method="POST" action="{{ url_for('admin_add_faculty') }}" class="row gy-2">
+              <div class="col-md-6"><input name="faculty_id" class="form-control" placeholder="Faculty ID" required></div>
+              <div class="col-md-6"><input name="name" class="form-control" placeholder="Name" required></div>
+              <div class="col-md-6"><input name="email" class="form-control" placeholder="Email" required></div>
+              <div class="col-12 text-end"><button class="btn btn-primary">Add Faculty</button></div>
+            </form>
+          </div>
+
+          <div class="list-group-item py-3">
+            <h6 class="mb-2"><i class="bi bi-folder-plus"></i> Add New Project</h6>
+            <form method="POST" action="{{ url_for('admin_add_project') }}" class="row gy-2">
+              
+              <!-- Project Title -->
+              <div class="col-md-6">
+                <input name="title" class="form-control" placeholder="Project Title" required>
+              </div>
+
+              <!-- Project Status Dropdown -->
+              <div class="col-md-4">
+                <select name="status" class="form-select" required>
+                  <option value="Ongoing" selected>Ongoing</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Cancelled">Cancelled</option>
+                </select>
+              </div>
+
+              <!-- Description -->
+              <div class="col-md-12 mt-2">
+                <input name="description" class="form-control" placeholder="Description (optional)">
+              </div>
+
+              <!-- Select Team (only unassigned ones) -->
+              <div class="col-md-6 mt-3">
+                <select name="team_id" class="form-select" required>
+                  <option value="">Select Team to Assign</option>
+                  {% for t in unassigned_teams %}
+                    <option value="{{ t.Team_ID }}">Team {{ t.Team_ID }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <!-- Submit Button -->
+              <div class="col-12 text-end mt-2">
+                <button class="btn btn-primary">Add Project</button>
+              </div>
+            </form>
+
+            <small class="text-muted">
+              Only teams without a project will appear here. Each team can have exactly one project.
+            </small>
+          </div>
+
+            
+
+          <div class="list-group-item py-3">
+          <h6 class="mb-2"><i class="bi bi-people-fill"></i> Create New Team</h6>
+          <form method="POST" action="{{ url_for('admin_add_team') }}" class="row gy-3">
+            
+            <!-- Select up to 4 students -->
+            <div class="col-md-8">
+              <label class="form-label fw-semibold">Select Students (1–4)</label>
+              <select name="student_srns" class="form-select" multiple required>
+                {% for s in unassigned_students %}
+                  <option value="{{ s.SRN }}">{{ s.SRN }} — {{ s.Name }} (Sem {{ s.Sem }})</option>
+                {% endfor %}
+              </select>
+              <small class="text-muted">Hold <kbd>Ctrl</kbd> (or <kbd>Cmd</kbd> on Mac) to select multiple students.</small>
+            </div>
+
+            <!-- Optional Faculty Assignment -->
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Assign Faculty (optional)</label>
+              <select name="faculty_id" class="form-select">
+                <option value="">None</option>
+                {% for f in faculty %}
+                  <option value="{{ f.Faculty_ID }}">{{ f.Name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-12 text-end mt-2">
+              <button type="submit" class="btn btn-primary">Create Team</button>
+            </div>
+          </form>
+
+          <small class="text-muted">
+            A team can have between 1 and 4 members. Only students without an existing team appear here.
+          </small>
+        </div>
+
+
+        <div class="list-group-item py-3">
+          <h6 class="mb-2"><i class="bi bi-calendar-event"></i> Schedule Review</h6>
+
+          <form method="POST" action="{{ url_for('admin_schedule_review') }}" class="row gy-3">
+
+            <!-- Select Team -->
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Select Team</label>
+              <select name="team_id" class="form-select" id="review-team-select" required>
+                <option value="">Select Team</option>
+                {% for t in teams %}
+                  <option value="{{ t.Team_ID }}" data-mentor="{{ t.Faculty_ID or '' }}">
+                    Team {{ t.Team_ID }}
+                    {% if t.Faculty_ID %}
+                      (Mentor: {{ t.Faculty_ID }})
+                    {% else %}
+                      (No Mentor)
+                    {% endif %}
+                  </option>
+                {% endfor %}
+              </select>
+              <small class="text-muted">Each team can have multiple reviews over time.</small>
+            </div>
+
+            <!-- Select Review Type -->
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Review Type</label>
+              <select name="review_type_id" class="form-select" required>
+                <option value="">Select Type</option>
+                {% for rt in review_types %}
+                  <option value="{{ rt.ReviewType_ID }}">{{ rt.Review_Name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <!-- Date -->
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Date</label>
+              <input name="date" type="date" class="form-control" required>
+            </div>
+
+            <!-- Venue -->
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Venue</label>
+              <input name="venue" class="form-control" placeholder="Venue">
+            </div>
+
+            <!-- Panel Members -->
+            <div class="col-md-8">
+              <label class="form-label fw-semibold">Additional Panel Faculty IDs</label>
+              <input name="panel_faculty_ids" id="panel-faculty-input" class="form-control"
+                    placeholder="e.g. 102, 103 (Mentor will be added automatically)">
+              <small class="text-muted">Separate multiple Faculty IDs with commas.</small>
+            </div>
+
+            <!-- Submit -->
+            <div class="col-12 text-end mt-2">
+              <button class="btn btn-primary">Schedule</button>
+            </div>
+          </form>
+        </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Student Modal -->
+<div class="modal fade" id="editStudentModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('admin_edit_student') }}">
+        <div class="modal-header">
+          <h5 class="modal-title">Edit Student</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="srn" id="edit-student-srn">
+          <div class="mb-2"><input name="name" id="edit-student-name" class="form-control" placeholder="Name" required></div>
+          <div class="mb-2"><input name="email" id="edit-student-email" class="form-control" placeholder="Email"></div>
+        </div>
+        <div class="modal-footer text-end"><button class="btn btn-primary">Save</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Faculty Modal -->
+<div class="modal fade" id="editFacultyModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('admin_edit_faculty') }}">
+        <div class="modal-header">
+          <h5 class="modal-title">Edit Faculty</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="faculty_id" id="edit-faculty-id">
+          <div class="mb-2"><input name="name" id="edit-faculty-name" class="form-control" placeholder="Name" required></div>
+          <div class="mb-2"><input name="email" id="edit-faculty-email" class="form-control" placeholder="Email"></div>
+        </div>
+        <div class="modal-footer text-end"><button class="btn btn-primary">Save</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Project Modal -->
+<div class="modal fade" id="editProjectModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('admin_edit_project') }}">
+        <div class="modal-header">
+          <h5 class="modal-title">Edit Project</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="project_id" id="edit-project-id">
+          <div class="mb-2"><input name="title" id="edit-project-title" class="form-control" placeholder="Title" required></div>
+          <div class="mb-2"><input name="status" id="edit-project-status" class="form-control" placeholder="Status"></div>
+          <div class="mb-2"><textarea name="description" id="edit-project-desc" class="form-control" placeholder="Description"></textarea></div>
+        </div>
+        <div class="modal-footer text-end"><button class="btn btn-primary">Save</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Assign Faculty to Team Modal -->
+<div class="modal fade" id="assignFacultyModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('admin_assign_faculty') }}">
+        <div class="modal-header">
+          <h5 class="modal-title">Assign Faculty to Team</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="team_id" id="assign-team-id">
+          <div class="mb-2">
+            <select name="faculty_id" class="form-select" required>
+              <option value="">Select Faculty</option>
+              {% for f in faculty %}
+              <option value="{{ f.Faculty_ID }}">{{ f.Name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer text-end"><button class="btn btn-primary">Assign</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Manage Team Members Modal -->
+<div class="modal fade" id="manageMembersModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title">Manage Team Members</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="addMemberForm" method="POST" action="{{ url_for('admin_add_team_member') }}">
+          <input type="hidden" name="team_id" id="manage-team-id">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Add Student (not in any team)</label>
+            <select name="srn" class="form-select">
+              <option value="">Select Student</option>
+              {% for s in unassigned_students %}
+                <option value="{{ s.SRN }}">{{ s.SRN }} — {{ s.Name }} (Sem {{ s.Sem }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="text-end">
+            <button type="submit" class="btn btn-success btn-sm"><i class="bi bi-person-plus"></i> Add Member</button>
+          </div>
+        </form>
+
+        <hr>
+
+        <h6 class="fw-bold text-secondary mb-2">Current Members</h6>
+        <div id="teamMembersList" class="list-group small">
+          <!-- Filled dynamically -->
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Review Modal -->
+<div class="modal fade" id="editReviewModal" tabindex="-1" aria-labelledby="editReviewModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('admin_edit_review') }}">
+        <div class="modal-header bg-dark text-white">
+          <h5 class="modal-title" id="editReviewModalLabel">Edit Review</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <input type="hidden" name="review_id" id="edit-review-id">
+
+          <div class="mb-3">
+            <label class="form-label">Review Date</label>
+            <input type="date" name="date" id="edit-review-date" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Venue</label>
+            <input type="text" name="venue" id="edit-review-venue" class="form-control" placeholder="Enter venue">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Panel Faculty IDs (comma separated)</label>
+            <input type="text" name="panel_faculty_ids" id="edit-review-panel" class="form-control" placeholder="e.g., 101, 102, 103">
+            <small class="text-muted">Only enter valid Faculty IDs, separated by commas.</small>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+
+<!-- Delete Review Modal -->
+<div class="modal fade" id="deleteReviewModal" tabindex="-1" aria-labelledby="deleteReviewModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-danger">
+      <form method="POST" action="{{ url_for('admin_delete_review') }}">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title" id="deleteReviewModalLabel">Delete Review</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <input type="hidden" name="review_id" id="delete-review-id">
+          <p class="mb-0">Are you sure you want to <strong>delete this review</strong>?</p>
+          <p class="text-danger small mt-1 mb-0">This will also remove associated panel assignments and evaluations.</p>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger">Delete Review</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- View Review Details Modal -->
+<div class="modal fade" id="viewReviewModal" tabindex="-1" aria-labelledby="viewReviewModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-info text-white">
+        <h5 class="modal-title" id="viewReviewModalLabel">Review Details</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Review Summary -->
+        <div id="review-summary" class="mb-4">
+          <h6 class="fw-bold text-dark mb-2"><i class="bi bi-journal-text"></i> Review Info</h6>
+          <p class="mb-1"><strong>Review ID:</strong> <span id="detail-review-id"></span></p>
+          <p class="mb-1"><strong>Type:</strong> <span id="detail-review-type"></span></p>
+          <p class="mb-1"><strong>Team:</strong> <span id="detail-review-team"></span></p>
+          <p class="mb-1"><strong>Project:</strong> <span id="detail-review-project"></span></p>
+          <p class="mb-1"><strong>Date:</strong> <span id="detail-review-date"></span></p>
+          <p class="mb-1"><strong>Venue:</strong> <span id="detail-review-venue"></span></p>
+          <p class="mb-1"><strong>Panel:</strong> <span id="detail-review-panel"></span></p>
+        </div>
+
+        <hr>
+
+        <!-- Evaluations Table -->
+        <div>
+          <h6 class="fw-bold text-dark mb-3"><i class="bi bi-clipboard-check"></i> Evaluations</h6>
+          <div id="evaluation-table-container" class="table-responsive">
+            <table class="table table-sm table-striped align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Student</th>
+                  <th>Rubric</th>
+                  <th>Marks</th>
+                  <th>Comments</th>
+                  <th>Evaluator</th>
+                  <th>Submitted On</th>
+                </tr>
+              </thead>
+              <tbody id="evaluation-table-body">
+                <tr><td colspan="6" class="text-center text-muted">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+<script>
+  // populate edit modals with data attributes
+  var editStudentModal = document.getElementById('editStudentModal');
+  editStudentModal && editStudentModal.addEventListener('show.bs.modal', function (event) {
+    var btn = event.relatedTarget;
+    document.getElementById('edit-student-srn').value = btn.getAttribute('data-srn');
+    document.getElementById('edit-student-name').value = btn.getAttribute('data-name');
+    document.getElementById('edit-student-email').value = btn.getAttribute('data-email');
+  });
+
+  var editFacultyModal = document.getElementById('editFacultyModal');
+  editFacultyModal && editFacultyModal.addEventListener('show.bs.modal', function (event) {
+    var btn = event.relatedTarget;
+    document.getElementById('edit-faculty-id').value = btn.getAttribute('data-fid');
+    document.getElementById('edit-faculty-name').value = btn.getAttribute('data-name');
+    document.getElementById('edit-faculty-email').value = btn.getAttribute('data-email');
+  });
+
+  var editProjectModal = document.getElementById('editProjectModal');
+  editProjectModal && editProjectModal.addEventListener('show.bs.modal', function (event) {
+    var btn = event.relatedTarget;
+    document.getElementById('edit-project-id').value = btn.getAttribute('data-pid');
+    document.getElementById('edit-project-title').value = btn.getAttribute('data-title');
+    document.getElementById('edit-project-status').value = btn.getAttribute('data-status');
+    document.getElementById('edit-project-desc').value = btn.getAttribute('data-desc');
+  });
+
+  var assignFacultyModal = document.getElementById('assignFacultyModal');
+  assignFacultyModal && assignFacultyModal.addEventListener('show.bs.modal', function (event) {
+    var btn = event.relatedTarget;
+    document.getElementById('assign-team-id').value = btn.getAttribute('data-team');
+  });
+
+
+  document.addEventListener('DOMContentLoaded', function() {
+    const studentSelect = document.querySelector('select[name="student_srns"]');
+    if (studentSelect) {
+      studentSelect.addEventListener('change', function() {
+        if ([...this.selectedOptions].length > 4) {
+          alert("You can select at most 4 students per team.");
+          // Deselect the last selected option
+          this.options[[...this.selectedOptions].length - 1].selected = false;
+        }
+      });
+    }
+  });
+
+  // Manage Members modal behavior
+  var manageMembersModal = document.getElementById('manageMembersModal');
+  manageMembersModal.addEventListener('show.bs.modal', function(event) {
+    const button = event.relatedTarget;
+    const teamId = button.getAttribute('data-team');
+    const members = button.getAttribute('data-members') || 'No members';
+    document.getElementById('manage-team-id').value = teamId;
+
+    const listContainer = document.getElementById('teamMembersList');
+    listContainer.innerHTML = '';
+
+    if (members === 'No members' || members.trim() === '') {
+      listContainer.innerHTML = '<div class="list-group-item text-muted">No members in this team.</div>';
+      return;
+    }
+
+    // Split members string (e.g. "John (PES1201), Alice (PES1202)")
+    const memberList = members.split(',').map(m => m.trim());
+    memberList.forEach(m => {
+      const srnMatch = m.match(/\((.*?)\)/);
+      const srn = srnMatch ? srnMatch[1] : m;
+      const div = document.createElement('div');
+      div.classList.add('list-group-item', 'd-flex', 'justify-content-between', 'align-items-center');
+      div.innerHTML = `
+        <span>${m}</span>
+        <form method="POST" action="{{ url_for('admin_remove_team_member') }}" onsubmit="return confirm('Remove ${srn}?');">
+          <input type="hidden" name="team_id" value="${teamId}">
+          <input type="hidden" name="srn" value="${srn}">
+          <button class="btn btn-sm btn-outline-danger"><i class="bi bi-x"></i></button>
+        </form>
+      `;
+      listContainer.appendChild(div);
+    });
+  });
+
+  // Edit Review Modal
+  const editReviewModal = document.getElementById('editReviewModal');
+  if (editReviewModal) {
+    editReviewModal.addEventListener('show.bs.modal', event => {
+      const btn = event.relatedTarget;
+      document.getElementById('edit-review-id').value = btn.getAttribute('data-review-id');
+      document.getElementById('edit-review-date').value = btn.getAttribute('data-date');
+      document.getElementById('edit-review-venue').value = btn.getAttribute('data-venue') || '';
+      document.getElementById('edit-review-panel').value = btn.getAttribute('data-panel') || '';
+    });
+  }
+
+  // Delete Review Modal
+  const deleteReviewModal = document.getElementById('deleteReviewModal');
+  if (deleteReviewModal) {
+    deleteReviewModal.addEventListener('show.bs.modal', event => {
+      const btn = event.relatedTarget;
+      document.getElementById('delete-review-id').value = btn.getAttribute('data-review-id');
+    });
+  }
+
+  const viewReviewModal = document.getElementById('viewReviewModal');
+  if (viewReviewModal) {
+    viewReviewModal.addEventListener('show.bs.modal', async event => {
+      const btn = event.relatedTarget;
+
+      // Populate basic info
+      document.getElementById('detail-review-id').textContent = btn.getAttribute('data-review-id');
+      document.getElementById('detail-review-type').textContent = btn.getAttribute('data-review-type');
+      document.getElementById('detail-review-team').textContent = btn.getAttribute('data-team');
+      document.getElementById('detail-review-project').textContent = btn.getAttribute('data-project') || 'N/A';
+      document.getElementById('detail-review-date').textContent = btn.getAttribute('data-date');
+      document.getElementById('detail-review-venue').textContent = btn.getAttribute('data-venue') || 'N/A';
+      document.getElementById('detail-review-panel').textContent = btn.getAttribute('data-panel') || 'N/A';
+
+      // Fetch evaluations for this review
+      const reviewId = btn.getAttribute('data-review-id');
+      const tableBody = document.getElementById('evaluation-table-body');
+      tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">Loading...</td></tr>`;
+
+      try {
+        const res = await fetch(`/admin/get_review_details/${reviewId}`);
+        const data = await res.json();
+        if (!data || data.length === 0) {
+          tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">No evaluations yet.</td></tr>`;
+          return;
+        }
+
+        tableBody.innerHTML = data.map(ev => `
+          <tr>
+            <td>${ev.SRN} — ${ev.StudentName}</td>
+            <td>${ev.Rubric_Name}</td>
+            <td>${ev.Marks}</td>
+            <td>${ev.Comments || '-'}</td>
+            <td>${ev.FacultyName}</td>
+            <td>${ev.Created_At ? new Date(ev.Created_At).toLocaleString() : ''}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        console.error("Failed to fetch review details:", err);
+        tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-danger">Error loading details.</td></tr>`;
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+  const teamSelect = document.getElementById('review-team-select');
+  const panelInput = document.getElementById('panel-faculty-input');
+
+  teamSelect.addEventListener('change', function() {
+    const mentorId = this.selectedOptions[0]?.getAttribute('data-mentor');
+    if (mentorId) {
+      // Ensure mentor is always at the start of the list
+      if (panelInput.value.trim() === '') {
+        panelInput.value = mentorId;
+      } else {
+        const existing = panelInput.value.split(',').map(s => s.trim());
+        if (!existing.includes(mentorId)) {
+          panelInput.value = mentorId + ', ' + panelInput.value;
+        }
+      }
+    }
+  });
+});
+
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

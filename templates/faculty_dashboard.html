@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Faculty Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <style>
+    .upcoming-row { background: rgba(16, 185, 129, 0.05); }
+    .past-row { background: rgba(108, 117, 125, 0.03); }
+  
+    /* Match width and alignment with other dashboard sections */
+    .evaluation-table-container {
+      max-width: 1300px;
+      margin: 0 auto;
+    }
+
+    /* Compact table look inside accordion */
+    .evaluation-table-container table {
+      width: 100%;
+      font-size: 0.9rem;
+    }
+
+    .evaluation-table-container th,
+    .evaluation-table-container td {
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+
+    .evaluation-table-container td:nth-child(3) {
+      white-space: normal; /* Let comments wrap naturally */
+    }
+
+    .accordion-button.bg-dark {
+      background-color: #0d6efd !important;
+    }
+
+    .accordion-button.bg-light {
+      background-color: #f8f9fa !important;
+    }
+
+    .accordion-button:not(.collapsed) {
+      box-shadow: none;
+    }
+
+  </style>
+</head>
+<body class="bg-light">
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="#">Faculty Dashboard</a>
+    <div class="d-flex">
+      <a href="{{ url_for('logout') }}" class="btn btn-light btn-sm">Logout</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container py-5">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="text-primary mb-0">Welcome, Faculty</h1>
+    <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#actionsModal">
+      <i class="bi bi-gear-fill"></i> Actions
+    </button>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <h4 class="text-primary mb-3">Your Teams & Projects</h4>
+  <div class="table-responsive shadow-sm mb-5">
+    <table class="table table-striped align-middle">
+      <thead class="table-primary">
+        <tr>
+          <th>Team ID</th>
+          <th>Members</th>
+          <th>Project Title</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for team in teams %}
+        <tr>
+          <td>{{ team.Team_ID }}</td>
+          <td>{{ team.Members }}</td>
+          <td>{{ team.ProjectTitle or 'N/A' }}</td>
+          <td><span class="badge bg-info">{{ team.ProjectStatus or 'Ongoing' }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h4 class="text-success mb-3">Upcoming Meetings</h4>
+  <div class="table-responsive shadow-sm mb-5">
+    <table class="table table-hover align-middle">
+      <thead class="table-success">
+        <tr><th>ID</th><th>Team</th><th>Project</th><th>Date & Time</th></tr>
+      </thead>
+      <tbody>
+        {% for m in upcoming_meetings %}
+        <tr class="upcoming-row">
+          <td>{{ m.Meeting_ID }}</td>
+          <td>{{ m.Team_ID }}</td>
+          <td>{{ m.ProjectTitle or 'N/A' }}</td>
+          <td>{{ m.DateTime }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h4 class="text-secondary mb-3">Past Meetings</h4>
+  <div class="table-responsive shadow-sm mb-5">
+    <table class="table table-hover align-middle">
+      <thead class="table-secondary">
+        <tr><th>ID</th><th>Team</th><th>Project</th><th>Date & Time</th><th>Feedback</th></tr>
+      </thead>
+      <tbody>
+        {% for m in past_meetings %}
+        <tr class="past-row">
+          <td>{{ m.Meeting_ID }}</td>
+          <td>{{ m.Team_ID }}</td>
+          <td>{{ m.ProjectTitle or 'N/A' }}</td>
+          <td>{{ m.DateTime }}</td>
+          <td>
+            {% if m.Feedback %}
+              {{ m.Feedback }}
+              <button class="btn btn-sm btn-outline-secondary ms-2" 
+                      data-bs-toggle="modal" 
+                      data-bs-target="#feedbackModal" 
+                      data-meeting-id="{{ m.Meeting_ID }}" 
+                      data-feedback="{{ m.Feedback }}">
+                Edit
+              </button>
+            {% else %}
+              <button class="btn btn-sm btn-outline-primary" 
+                      data-bs-toggle="modal" 
+                      data-bs-target="#feedbackModal" 
+                      data-meeting-id="{{ m.Meeting_ID }}" 
+                      data-feedback="">
+                Add Feedback
+              </button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h4 class="text-danger mb-3">Reviews</h4>
+  <div class="table-responsive shadow-sm mb-5">
+    <table class="table table-striped align-middle">
+      <thead class="table-danger">
+        <tr><th>Review ID</th><th>Review Type</th><th>Team</th><th>Date</th><th>Venue</th></tr>
+      </thead>
+      <tbody>
+        {% for r in reviews %}
+        <tr>
+          <td>{{ r.Review_ID }}</td>
+          <td>{{ r.ReviewType_ID }}</td>
+          <td>{{ r.Team_ID }}</td>
+          <td>{{ r.Date }}</td>
+          <td>{{ r.Venue or 'N/A' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- PANEL REVIEWS ASSIGNED TO YOU -->
+  <h4 class="text-info mb-3">Panel Reviews Assigned to You</h4>
+  <div class="table-responsive shadow-sm">
+    <table class="table table-hover align-middle">
+      <thead class="table-info">
+        <tr><th>Review ID</th><th>Team ID</th><th>Project Title</th><th>Date</th><th>Venue</th></tr>
+      </thead>
+      <tbody>
+        {% for pr in panel_reviews %}
+        <tr>
+          <td>{{ pr.Review_ID }}</td>
+          <td>{{ pr.Team_ID }}</td>
+          <td>{{ pr.ProjectTitle or 'N/A' }}</td>
+          <td>{{ pr.Date }}</td>
+          <td>{{ pr.Venue or 'N/A' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center text-muted">No panel reviews assigned to you.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="container mt-5">
+  <h4 class="text-dark mb-3">Submitted Evaluations</h4>
+
+  <div class="accordion shadow-sm evaluation-table-container" id="evaluationsAccordion">
+    {% if grouped_evals %}
+      {% for review_id, students in grouped_evals.items() %}
+      <div class="accordion-item mb-2">
+        <h2 class="accordion-header" id="heading{{ review_id }}">
+          <button class="accordion-button collapsed bg-dark text-white" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ review_id }}">
+            Review {{ review_id }}
+          </button>
+        </h2>
+        <div id="collapse{{ review_id }}" class="accordion-collapse collapse" data-bs-parent="#evaluationsAccordion">
+          <div class="accordion-body">
+            <div class="accordion" id="review{{ review_id }}Students">
+              {% for srn, evals in students.items() %}
+              <div class="accordion-item mb-2">
+                <h2 class="accordion-header" id="heading{{ review_id }}-{{ srn }}">
+                  <button class="accordion-button collapsed bg-light text-dark" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ review_id }}-{{ srn }}">
+                    {{ srn }} — {{ evals[0].StudentName }}
+                  </button>
+                </h2>
+                <div id="collapse{{ review_id }}-{{ srn }}" class="accordion-collapse collapse" data-bs-parent="#review{{ review_id }}Students">
+                  <div class="accordion-body p-3 d-flex justify-content-center">
+                    <div style="max-width: 850px; width: 100%;">
+                      <table class="table table-sm table-striped align-middle mb-0 text-center">
+                        <thead class="table-secondary">
+                          <tr>
+                            <th>Rubric</th>
+                            <th>Marks</th>
+                            <th>Comments</th>
+                            <th>Submitted On</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {% for ev in evals %}
+                          <tr>
+                            <td>{{ ev.RubricName }}</td>
+                            <td>{{ ev.Marks }}</td>
+                            <td class="text-start">{{ ev.Comments or '-' }}</td>
+                            <td>{{ ev.Created_At.strftime('%Y-%m-%d %H:%M') if ev.Created_At else '' }}</td>
+                          </tr>
+                          {% endfor %}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="text-center text-muted py-3">No evaluations submitted yet.</div>
+    {% endif %}
+  </div>
+</div>
+
+
+<!-- ACTIONS MODAL -->
+<div class="modal fade" id="actionsModal" tabindex="-1" aria-labelledby="actionsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="actionsModalLabel">Faculty Actions</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="list-group">
+          
+          <!-- Schedule Meeting -->
+          <div class="list-group-item py-3">
+            <h6 class="text-primary mb-2"><i class="bi bi-calendar-event"></i> Schedule Meeting</h6>
+            <form method="POST" action="{{ url_for('faculty_schedule_meeting') }}" class="row gy-2">
+              <input type="hidden" name="faculty_id" value="{{ faculty_id }}">
+              <div class="col-md-6">
+                <select name="team_id" class="form-select" required>
+                  <option value="">Select Team</option>
+                  {% for t in teams %}
+                  <option value="{{ t.Team_ID }}">{{ t.Team_ID }} - {{ t.ProjectTitle or 'No Project' }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-6">
+                <input type="datetime-local" name="datetime" class="form-control" required>
+              </div>
+              <div class="col-12 text-end mt-2">
+                <button type="submit" class="btn btn-success">Schedule</button>
+              </div>
+            </form>
+          </div>
+
+
+          <!-- Give Evaluation Trigger -->
+          <div class="list-group-item py-3">
+            <h6 class="text-danger mb-2"><i class="bi bi-clipboard-check"></i> Give Evaluation</h6>
+            <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#evaluationModal">
+              <i class="bi bi-plus-circle"></i> Start Evaluation
+            </button>
+          </div>
+
+
+          <!-- Claim Another Team -->
+          <div class="list-group-item py-3">
+            <h6 class="text-warning mb-2"><i class="bi bi-hand-thumbs-up"></i> Claim Another Team</h6>
+            <form method="POST" action="{{ url_for('faculty_claim_team') }}" class="row gy-2">
+              <div class="col-md-8">
+                <select name="team_id" class="form-select" required>
+                  <option value="">Select Unassigned Team</option>
+                  {% for team in unassigned_teams %}
+                  <option value="{{ team.Team_ID }}">Team {{ team.Team_ID }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4 text-end">
+                <button type="submit" class="btn btn-warning text-dark">Claim</button>
+              </div>
+            </form>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Evaluation Modal -->
+<div class="modal fade" id="evaluationModal" tabindex="-1" aria-labelledby="evaluationModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <form id="evaluationForm" method="POST" action="{{ url_for('faculty_evaluate_student') }}">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title" id="evaluationModalLabel">Give Evaluation</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="row g-3">
+            <!-- Select Review -->
+            <div class="col-md-6">
+              <label class="form-label">Select Review</label>
+              <select name="review_id" id="reviewSelect" class="form-select" required>
+                <option value="">Select Review</option>
+                {% for r in panel_reviews %}
+                <option value="{{ r.Review_ID }}">Review {{ r.Review_ID }} - Team {{ r.Team_ID }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <!-- Select Student -->
+            <div class="col-md-6">
+              <label class="form-label">Select Student</label>
+              <select name="student_srn" id="studentSelect" class="form-select" required disabled>
+                <option value="">Select Student</option>
+              </select>
+            </div>
+          </div>
+
+          <hr>
+
+          <!-- Rubric Table -->
+          <div class="mb-3">
+            <label class="form-label">Evaluation Rubrics</label>
+            <table class="table table-sm align-middle" id="rubricTable">
+              <thead>
+                <tr>
+                  <th>Rubric ID</th>
+                  <th>Max Marks</th>
+                  <th>Marks</th>
+                  <th>Comments</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="addRubricBtn">
+              <i class="bi bi-plus-lg"></i> Add Rubric
+            </button>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger">Submit Evaluation</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Add/Edit Feedback Modal -->
+<div class="modal fade" id="feedbackModal" tabindex="-1" aria-labelledby="feedbackModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="POST" action="{{ url_for('faculty_add_feedback') }}">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title" id="feedbackModalLabel">Add/Edit Feedback</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="meeting_id" id="feedbackMeetingId">
+          <div class="mb-3">
+            <label class="form-label">Feedback</label>
+            <textarea name="feedback" id="feedbackText" class="form-control" rows="3" required></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  const feedbackModal = document.getElementById('feedbackModal');
+  feedbackModal.addEventListener('show.bs.modal', event => {
+    const button = event.relatedTarget;
+    const meetingId = button.getAttribute('data-meeting-id');
+    const feedback = button.getAttribute('data-feedback') || '';
+    document.getElementById('feedbackMeetingId').value = meetingId;
+    document.getElementById('feedbackText').value = feedback;
+  });
+
+  
+  document.addEventListener("DOMContentLoaded", () => {
+    const reviewSelect = document.getElementById("reviewSelect");
+    const studentSelect = document.getElementById("studentSelect");
+    const rubricTableBody = document.querySelector("#rubricTable tbody");
+    const addRubricBtn = document.getElementById("addRubricBtn");
+
+    // Parse safely from DOM
+    const rubricDataEl = document.getElementById("rubric-data");
+    const rubricList = rubricDataEl ? JSON.parse(rubricDataEl.textContent) : [];
+    console.log("Rubrics loaded:", rubricList);
+
+    // When a review is selected, fetch students dynamically
+    reviewSelect.addEventListener("change", async () => {
+      const reviewId = reviewSelect.value;
+      studentSelect.innerHTML = '<option value="">Select Student</option>';
+      studentSelect.disabled = true;
+      if (!reviewId) return;
+
+      try {
+        const res = await fetch(`/faculty/get_students_by_review/${reviewId}`);
+        const students = await res.json();
+        students.forEach(s => {
+          const opt = document.createElement("option");
+          opt.value = s.SRN;
+          opt.textContent = `${s.SRN} - ${s.Name}`;
+          studentSelect.appendChild(opt);
+        });
+        studentSelect.disabled = false;
+      } catch (err) {
+        console.error("Failed to fetch students:", err);
+      }
+    });
+
+    /// Add a new rubric row
+    function addRubricRow() {
+      const row = document.createElement("tr");
+      const rubricSelectId = `rubric-${Date.now()}`;
+      row.innerHTML = `
+        <td>
+          <select name="rubric_id[]" class="form-select form-select-sm rubric-select" id="${rubricSelectId}" required>
+            <option value="">Select Rubric</option>
+            ${rubricList.map(r => `<option value="${r.Rubric_ID}" data-max="${r.Max_Marks}">${r.Rubric_Name}</option>`).join("")}
+          </select>
+        </td>
+        <td><input name="max_marks[]" class="form-control form-control-sm" readonly></td>
+        <td><input name="marks[]" type="number" class="form-control form-control-sm" min="0" required></td>
+        <td><input name="comments[]" type="text" class="form-control form-control-sm" placeholder="Comments (optional)"></td>
+        <td><button type="button" class="btn btn-sm btn-outline-danger removeRubric"><i class="bi bi-x"></i></button></td>
+      `;
+      rubricTableBody.appendChild(row);
+    }
+
+    // Add row button
+    addRubricBtn.addEventListener("click", addRubricRow);
+
+    // Handle rubric select → fill max marks
+  rubricTableBody.addEventListener("change", e => {
+    if (e.target.matches(".rubric-select")) {
+      const maxInput = e.target.closest("tr").querySelector('input[name="max_marks[]"]');
+      const selectedOption = e.target.selectedOptions[0];
+      maxInput.value = selectedOption ? selectedOption.getAttribute("data-max") : "";
+    }
+  });
+
+  // Validate marks ≤ max
+  rubricTableBody.addEventListener("input", e => {
+    if (e.target.name === "marks[]") {
+      const row = e.target.closest("tr");
+      const max = parseFloat(row.querySelector('input[name="max_marks[]"]').value);
+      const val = parseFloat(e.target.value);
+      if (!isNaN(val) && !isNaN(max) && val > max) {
+        e.target.value = max;
+        alert("Marks cannot exceed Max Marks!");
+      }
+    }
+  });
+
+  // Remove rubric
+  rubricTableBody.addEventListener("click", e => {
+    if (e.target.closest(".removeRubric")) e.target.closest("tr").remove();
+  });
+});
+
+</script>
+
+<!-- Store rubric data safely as JSON -->
+<script id="rubric-data" type="application/json">
+  {{ rubrics | tojson }}
+</script>
+
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

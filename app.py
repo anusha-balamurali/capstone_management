@@ -1,734 +1,1323 @@
-# This is the "bridge" (API) that connects your frontend to the database.
-# This version includes new endpoints for specific user roles.
-
-from flask import Flask, jsonify, request
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 import mysql.connector
-from mysql.connector import Error, errorcode
-from flask_cors import CORS
-from decimal import Decimal # Import Decimal for handling potential decimal results
-import datetime # Import datetime to handle DATE objects
+from mysql.connector import Error
+from collections import defaultdict
 
-# --- 1. SETUP ---
 app = Flask(__name__)
-CORS(app) # Allow frontend requests
+app.secret_key = "your_secret_key_here"
 
-# --- 2. DATABASE CONFIGURATION ---
-DB_CONFIG = {
+# -----------------------------
+# DB config - change if needed
+# -----------------------------
+db_config = {
     'host': 'localhost',
     'user': 'root',
-    'password': '12345', # <-- IMPORTANT: SET YOUR MYSQL PASSWORD
+    'password': 'sql123',
     'database': 'capstoneprojectdb'
 }
 
 def get_db_connection():
-    """Establishes a connection to the database."""
     try:
-        conn = mysql.connector.connect(**DB_CONFIG)
-        # print("DB Connection Successful") # Debug log
-        return conn
+        return mysql.connector.connect(**db_config)
     except Error as e:
-        print(f"Error connecting to MySQL: {e}")
+        print("DB connect error:", e)
         return None
 
-# --- Helper function to handle Decimal and Date conversion for JSON ---
-#
-# THIS IS THE FIX FOR "Error loading projects"
-#
-def json_serializer(obj):
-    """Custom JSON serializer for objects not serializable by default json code"""
-    if isinstance(obj, (Decimal)):
-        # Convert Decimal to float for JSON
-        return float(obj)
-    if isinstance(obj, (datetime.date, datetime.datetime)):
-        # Convert Date/Datetime objects to ISO 8601 string
-        return obj.isoformat()
-    # If it's not a type we handle, raise TypeError so json.dumps fails clearly
-    raise TypeError(f"Type {type(obj)} not serializable")
-
-
-# --- Helper function for database errors ---
-def handle_db_error(e):
-    """Returns a standardized error message from a DB exception."""
-    print(f"Database Error: {e}")
-    # Check for custom trigger errors (SQLSTATE 45000)
-    if hasattr(e, 'sqlstate') and e.sqlstate == '45000':
-         # Attempt to extract the custom message if available
-        msg = getattr(e, 'msg', 'A database rule was violated.') 
-        return jsonify({"error": msg}), 400
-    # Handle other potential errors like connection issues, syntax errors, etc.
-    return jsonify({"error": f"An unexpected database error occurred: {str(e)}"}), 500
-
-
-# --- 3. API ENDPOINTS ---
-
+# -----------------------------
+# Home / Index
+# -----------------------------
 @app.route('/')
 def home():
-    return "Capstone API Server is running!"
+    return render_template('index.html')
 
-# --- GET Endpoints (Read Data) ---
+# -----------------------------
+# Login
+# -----------------------------
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
 
-@app.route('/api/students', methods=['GET'])
-def get_students():
-    """Gets basic student info for dropdowns."""
-    try:
-        conn = get_db_connection()
-        if not conn: return jsonify({"error": "DB connection failed"}), 500
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT SRN, Name FROM Student ORDER BY Name")
-        students = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        return jsonify(students)
-    except Error as e:
-        return jsonify({"error": str(e)}), 500
+    # populate dropdowns
+    cursor.execute("SELECT Name, Faculty_ID FROM Faculty")
+    faculty_list = cursor.fetchall()
+    cursor.execute("SELECT Name, SRN FROM Student")
+    student_list = cursor.fetchall()
 
-@app.route('/api/faculty', methods=['GET'])
-def get_faculty():
-    """Gets basic faculty info for dropdowns."""
-    try:
-        conn = get_db_connection()
-        if not conn: return jsonify({"error": "DB connection failed"}), 500
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT Faculty_ID, Name FROM Faculty ORDER BY Name")
-        faculty = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        return jsonify(faculty)
-    except Error as e:
-        return jsonify({"error": str(e)}), 500
+    cursor.close()
+    conn.close()
 
-@app.route('/api/teams', methods=['GET'])
-def get_teams():
-    """Gets teams with mentor and student info, using the view."""
-    try:
-        conn = get_db_connection()
-        if not conn: return jsonify({"error": "DB connection failed"}), 500
-        cursor = conn.cursor(dictionary=True)
-        
-        # Use the Team_Student_View logic adapted slightly
-        cursor.execute("""
-            SELECT 
-                t.Team_ID, 
-                t.Faculty_ID AS Mentor_ID, 
-                f.Name AS Mentor_Name,
-                GROUP_CONCAT(DISTINCT CONCAT(s.Name, ' (', s.SRN, ')') ORDER BY s.Name SEPARATOR '; ') AS Students_Concat
-            FROM Team t
-            JOIN Faculty f ON t.Faculty_ID = f.Faculty_ID
-            LEFT JOIN Team_Student ts ON t.Team_ID = ts.Team_ID
-            LEFT JOIN Student s ON ts.SRN = s.SRN
-            GROUP BY t.Team_ID, t.Faculty_ID, f.Name
-            ORDER BY t.Team_ID
-        """)
-        
-        teams_raw = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        
-        # Process the concatenated student string into a list
-        teams_processed = []
-        for team in teams_raw:
-            students_list = []
-            if team.get('Students_Concat'):
-                # Split by '; ' and filter out potential empty strings if any student has no name/SRN
-                students_list = [s.strip() for s in team['Students_Concat'].split(';') if s.strip()]
-            
-            teams_processed.append({
-                "Team_ID": team['Team_ID'],
-                "Mentor_ID": team['Mentor_ID'],
-                "Mentor_Name": team['Mentor_Name'],
-                "Students": students_list # Keep the key name simple
-            })
-            
-        return jsonify(teams_processed)
-    except Error as e:
-        print(f"Error fetching teams: {e}")
-        return jsonify({"error": f"Database error fetching teams: {e}"}), 500
-    except Exception as e:
-         print(f"Unexpected error fetching teams: {e}")
-         return jsonify({"error": f"Server error processing teams: {e}"}), 500
-
-
-# --- Dashboard Endpoints ---
-
-@app.route('/api/dashboard/admin-view', methods=['GET'])
-def get_admin_dashboard():
-    """Gets combined project/review info using the Admin_View."""
-    try:
-        conn = get_db_connection()
-        if not conn: return jsonify({"error": "DB connection failed"}), 500
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM Admin_View ORDER BY Project_ID, Review_ID")
-        data = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        # Use json.dumps with the CORRECT handler
-        import json
-        return app.response_class(
-            response=json.dumps(data, default=json_serializer, indent=4), # <-- USES THE NEW HELPER
-            status=200,
-            mimetype='application/json'
-        )
-    except Error as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/faculty/<int:faculty_id>/dashboard', methods=['GET'])
-def get_faculty_dashboard(faculty_id):
-    """Gets data specific to a faculty member's dashboard."""
-    dashboard_data = {
-        "mentored_teams": [],
-        "panel_reviews": []
-    }
-    try:
-        conn = get_db_connection()
-        if not conn: return jsonify({"error": "DB connection failed"}), 500
-        cursor = conn.cursor(dictionary=True)
-
-        # 1. Get teams mentored by this faculty
-        cursor.execute("""
-            SELECT 
-                t.Team_ID, 
-                GROUP_CONCAT(DISTINCT s.Name ORDER BY s.Name SEPARATOR ', ') AS Students
-            FROM Team t 
-            LEFT JOIN Team_Student ts ON t.Team_ID = ts.Team_ID
-            LEFT JOIN Student s ON ts.SRN = s.SRN
-            WHERE t.Faculty_ID = %s
-            GROUP BY t.Team_ID
-            ORDER BY t.Team_ID
-        """, (faculty_id,))
-        dashboard_data["mentored_teams"] = cursor.fetchall()
-        # Convert student string to list for consistency
-        for team in dashboard_data["mentored_teams"]:
-            team["Students"] = team["Students"].split(', ') if team.get("Students") else []
-
-
-        # 2. Get reviews where this faculty is on the panel
-        cursor.execute("""
-            SELECT 
-                r.Review_ID, rt.Review_Name, r.Date, r.Venue, r.Team_ID, p.Title
-            FROM Review_Panel rp
-            JOIN Review r ON rp.Review_ID = r.Review_ID
-            JOIN Review_Type rt ON r.ReviewType_ID = rt.ReviewType_ID
-            LEFT JOIN Team_Project tp ON r.Team_ID = tp.Team_ID 
-            LEFT JOIN Project p ON tp.Project_ID = p.Project_ID 
-            WHERE rp.Faculty_ID = %s
-            ORDER BY r.Date DESC, r.Review_ID
-        """, (faculty_id,))
-        dashboard_data["panel_reviews"] = cursor.fetchall()
-
-        cursor.close()
-        conn.close()
-        # Use json.dumps with the CORRECT handler
-        import json
-        return app.response_class(
-            response=json.dumps(dashboard_data, default=json_serializer, indent=4), # <-- USES THE NEW HELPER
-            status=200,
-            mimetype='application/json'
-        )
-    except Error as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route('/api/student/<string:srn>/dashboard', methods=['GET'])
-def get_student_dashboard(srn):
-    """Gets data specific to a student's dashboard."""
-    dashboard_data = {
-        "team_info": None,
-        "evaluations": [],
-        "total_marks": 0.0 # Default to float
-    }
-    conn = None
-    cursor = None
-    cursor_func = None
-    try:
-        conn = get_db_connection()
-        if not conn: return jsonify({"error": "DB connection failed"}), 500
-        cursor = conn.cursor(dictionary=True) # Use dictionary cursor for most queries
-
-        # 1. Get Team, Project, and Mentor info for the student
-        cursor.execute("""
-            SELECT 
-                t.Team_ID, p.Title AS Project_Title, p.Status AS Project_Status, 
-                f.Name AS Mentor_Name,
-                (SELECT GROUP_CONCAT(DISTINCT s2.Name ORDER BY s2.Name SEPARATOR ', ') 
-                 FROM Team_Student ts2 
-                 JOIN Student s2 ON ts2.SRN = s2.SRN 
-                 WHERE ts2.Team_ID = t.Team_ID) AS Members
-            FROM Student s
-            LEFT JOIN Team_Student ts ON s.SRN = ts.SRN
-            LEFT JOIN Team t ON ts.Team_ID = t.Team_ID
-            LEFT JOIN Faculty f ON t.Faculty_ID = f.Faculty_ID
-            LEFT JOIN Team_Project tp ON t.Team_ID = tp.Team_ID
-            LEFT JOIN Project p ON tp.Project_ID = p.Project_ID
-            WHERE s.SRN = %s
-        """, (srn,))
-        team_info = cursor.fetchone() 
-        if team_info and team_info['Team_ID']: # Check if student is actually in a team
-             # Convert Members string to list
-             team_info["Members"] = team_info["Members"].split(', ') if team_info.get("Members") else []
-             dashboard_data["team_info"] = team_info
+    if request.method == 'POST':
+        role = request.form.get('role')
+        if role == 'faculty':
+            faculty_id = request.form.get('faculty_id')
+            session['role'] = 'faculty'
+            session['faculty_id'] = faculty_id
+            flash("Logged in as Faculty", "success")
+            return redirect(url_for('faculty_dashboard'))
+        elif role == 'student':
+            srn = request.form.get('srn')
+            session['role'] = 'student'
+            session['srn'] = srn
+            flash("Logged in as Student", "success")
+            return redirect(url_for('student_dashboard'))
+        elif role == 'admin':
+            session['role'] = 'admin'
+            flash("Logged in as Admin", "success")
+            return redirect(url_for('admin_dashboard'))
         else:
-             # If student isn't in a team, set team_info to None (already default)
-             print(f"Student {srn} not found in any team.")
-             # No need to query evaluations or total marks if not in a team
-             cursor.close()
-             conn.close()
-             return jsonify(dashboard_data) # Return early
+            flash("Select a valid role", "danger")
 
+    return render_template('login.html', faculty_list=faculty_list, student_list=student_list)
 
-        # 2. Get Evaluations for the student (only if they are in a team)
-        cursor.execute("""
-            SELECT 
-                e.Marks, e.Comments, 
-                r.Rubric_Name, 
-                rt.Review_Name, 
-                f.Name AS Faculty_Name,
-                rev.Date AS Review_Date,    -- Added Date
-                rev.Venue AS Review_Venue   -- Added Venue
+# -----------------------------
+# Logout (explicit endpoint so url_for('logout') works)
+# -----------------------------
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash("Logged out", "info")
+    return redirect(url_for('login'))
+
+# -----------------------------
+# Faculty routes
+# -----------------------------
+@app.route('/faculty/dashboard')
+def faculty_dashboard():
+    if session.get('role') != 'faculty':
+        flash("Access denied", "danger")
+        return redirect(url_for('login'))
+
+    faculty_id = session.get('faculty_id')
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # Teams mentored
+    cursor.execute("""
+        SELECT 
+            t.Team_ID,
+            GROUP_CONCAT(s.Name SEPARATOR ', ') AS Members,
+            p.Title AS ProjectTitle,
+            p.Status AS ProjectStatus
+        FROM Team t
+        LEFT JOIN Team_Student ts ON t.Team_ID = ts.Team_ID
+        LEFT JOIN Student s ON ts.SRN = s.SRN
+        LEFT JOIN Team_Project tp ON t.Team_ID = tp.Team_ID
+        LEFT JOIN Project p ON tp.Project_ID = p.Project_ID
+        WHERE t.Faculty_ID = %s
+        GROUP BY t.Team_ID, p.Title, p.Status
+    """, (faculty_id,))
+    teams = cursor.fetchall()
+
+    # Upcoming meetings (DateTime column)
+    cursor.execute("""
+        SELECT m.Meeting_ID, t.Team_ID, p.Title AS ProjectTitle, m.DateTime, m.Feedback
+        FROM Meeting m
+        JOIN Team t ON m.Team_ID = t.Team_ID
+        LEFT JOIN Team_Project tp ON t.Team_ID = tp.Team_ID
+        LEFT JOIN Project p ON tp.Project_ID = p.Project_ID
+        WHERE t.Faculty_ID = %s AND m.DateTime >= NOW()
+        ORDER BY m.DateTime ASC
+    """, (faculty_id,))
+    upcoming_meetings = cursor.fetchall()
+
+    # Past meetings
+    cursor.execute("""
+        SELECT m.Meeting_ID, t.Team_ID, p.Title AS ProjectTitle, m.DateTime, m.Feedback
+        FROM Meeting m
+        JOIN Team t ON m.Team_ID = t.Team_ID
+        LEFT JOIN Team_Project tp ON t.Team_ID = tp.Team_ID
+        LEFT JOIN Project p ON tp.Project_ID = p.Project_ID
+        WHERE t.Faculty_ID = %s AND m.DateTime < NOW()
+        ORDER BY m.DateTime DESC
+    """, (faculty_id,))
+    past_meetings = cursor.fetchall()
+
+    # Reviews created by this faculty (where team belongs to them)
+    cursor.execute("""
+        SELECT r.Review_ID, r.ReviewType_ID, t.Team_ID, p.Title AS ProjectTitle, r.Date, r.Venue
+        FROM Review r
+        JOIN Team t ON r.Team_ID = t.Team_ID
+        LEFT JOIN Team_Project tp ON t.Team_ID = tp.Team_ID
+        LEFT JOIN Project p ON tp.Project_ID = p.Project_ID
+        WHERE t.Faculty_ID = %s
+        ORDER BY r.Date DESC
+    """, (faculty_id,))
+    reviews = cursor.fetchall()
+
+    # Panel reviews where faculty is part of review panel
+    cursor.execute("""
+        SELECT r.Review_ID, r.Team_ID, p.Title AS ProjectTitle, r.Date, r.Venue
+        FROM Review r
+        JOIN Review_Panel rp ON r.Review_ID = rp.Review_ID
+        LEFT JOIN Team_Project tp ON r.Team_ID = tp.Team_ID
+        LEFT JOIN Project p ON tp.Project_ID = p.Project_ID
+        WHERE rp.Faculty_ID = %s
+        ORDER BY r.Date DESC
+    """, (faculty_id,))
+    panel_reviews = cursor.fetchall()
+
+    # unassigned teams
+    cursor.execute("SELECT Team_ID FROM Team WHERE Faculty_ID IS NULL")
+    unassigned_teams = cursor.fetchall()
+
+    # Fetch all rubrics
+    cursor.execute("SELECT Rubric_ID, Rubric_Name, Max_Marks FROM Rubric")
+    rubrics = cursor.fetchall()
+
+    # Fetch all evaluations submitted by this faculty
+    cursor.execute("""
+        SELECT 
+            e.Evaluation_ID,
+            e.Review_ID,
+            e.SRN,
+            s.Name AS StudentName,
+            r.Rubric_Name AS RubricName,
+            e.Marks,
+            e.Comments,
+            e.Created_At
             FROM Evaluation e
+            JOIN Student s ON e.SRN = s.SRN
             JOIN Rubric r ON e.Rubric_ID = r.Rubric_ID
-            JOIN Review rev ON e.Review_ID = rev.Review_ID # Added join for Review details
-            JOIN Review_Type rt ON rev.ReviewType_ID = rt.ReviewType_ID
-            JOIN Faculty f ON e.Faculty_ID = f.Faculty_ID
-            WHERE e.SRN = %s
-            ORDER BY rev.Date, rt.Review_Name, r.Rubric_Name 
-        """, (srn,))
-        dashboard_data["evaluations"] = cursor.fetchall()
+            WHERE e.Faculty_ID = %s
+            ORDER BY e.Created_At DESC;
+    """, (faculty_id,))
+    evaluations = cursor.fetchall()
 
-        # 3. Get Total Marks using the function (only if they are in a team)
-        cursor_func = conn.cursor() # Use a separate, standard cursor for function call
-        cursor_func.execute("SELECT GetStudentTotalMarks(%s)", (srn,))
-        result = cursor_func.fetchone()
-        
-        # Explicitly handle result and convert Decimal
-        if result and result[0] is not None:
-             marks_value_func = result[0]
-             print(f"SRN: {srn} (Dashboard) - Raw result from DB function: {marks_value_func} (Type: {type(marks_value_func)})")
-             try:
-                 dashboard_data["total_marks"] = float(marks_value_func)
-             except (TypeError, ValueError):
-                 print(f"SRN: {srn} (Dashboard) - Error converting function result to float.")
-                 dashboard_data["total_marks"] = 0.0 # Fallback
-        else:
-            print(f"SRN: {srn} (Dashboard) - GetStudentTotalMarks returned NULL or no result.")
-            dashboard_data["total_marks"] = 0.0 # Fallback
-        
-        print(f"SRN: {srn} (Dashboard) - Final total_marks: {dashboard_data['total_marks']}")
-        
-        # Use json.dumps with the CORRECT handler
-        import json
-        return app.response_class(
-            response=json.dumps(dashboard_data, default=json_serializer, indent=4), # <-- USES THE NEW HELPER
-            status=200,
-            mimetype='application/json'
-        )
+    grouped_evals = defaultdict(lambda: defaultdict(list))
+    for ev in evaluations:
+        grouped_evals[ev['Review_ID']][ev['SRN']].append(ev)
 
-    except Error as e:
-        print(f"DB Error fetching student dashboard for {srn}: {e.errno} - {e.msg}")
-        return jsonify({"error": f"Database error: {e.msg}"}), 500
-    except Exception as e:
-        import traceback
-        print(f"Server Error fetching student dashboard for {srn}: {e}")
-        traceback.print_exc() # Print full traceback to server console
-        return jsonify({"error": f"An unexpected server error occurred: {e}"}), 500
-    finally:
-        # Ensure all cursors and connection are closed
-        if cursor: cursor.close()
-        if cursor_func: cursor_func.close()
-        if conn and conn.is_connected(): conn.close()
+    cursor.close()
+    conn.close()
 
+    return render_template(
+        'faculty_dashboard.html',
+        teams=teams,
+        faculty_id=faculty_id,
+        upcoming_meetings=upcoming_meetings,
+        past_meetings=past_meetings,
+        reviews=reviews,
+        panel_reviews=panel_reviews,
+        unassigned_teams=unassigned_teams,
+        rubrics=rubrics,
+        grouped_evals=grouped_evals
+    )
 
-# --- POST Endpoints (Write Data) ---
+@app.route('/faculty/schedule_meeting', methods=['POST'])
+def faculty_schedule_meeting():
+    if session.get('role') != 'faculty':
+        flash("Access denied", "danger")
+        return redirect(url_for('login'))
+    
+    faculty_id = request.form.get('faculty_id')
+    team_id = request.form.get('team_id')
+    datetime = request.form.get('datetime')
 
-@app.route('/api/team', methods=['POST'])
-def create_team():
-    """Creates a new team and adds students."""
-    data = request.json
-    mentor_id = data.get('mentor_id')
-    student_srns = data.get('student_srns', []) # Expecting a list of SRNs
-
-    if not mentor_id or not student_srns:
-        return jsonify({"error": "Mentor ID and at least one student SRN are required"}), 400
-    if len(student_srns) > 4:
-        return jsonify({"error": "A team cannot have more than 4 members"}), 400
-
-    conn = None
-    cursor = None
+    conn = get_db_connection()
+    cursor = conn.cursor()
     try:
-        conn = get_db_connection()
-        if not conn: return jsonify({"error": "DB connection failed"}), 500
-        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO Meeting (Faculty_ID, Team_ID, DateTime, Feedback) VALUES (%s, %s, %s, NULL)",
+            (faculty_id, team_id, datetime)
+        )
+        conn.commit()
+        flash("Meeting scheduled successfully!", "success")
+    except Error as e:
+        flash("Error scheduling meeting: " + str(e), "danger")
+    finally:
+        cursor.close()
+        conn.close()
 
-        # Check if any student is already in another team
-        placeholders = ', '.join(['%s'] * len(student_srns))
-        check_sql = f"SELECT SRN FROM Team_Student WHERE SRN IN ({placeholders})"
-        cursor.execute(check_sql, tuple(student_srns)) # Pass as tuple
-        existing_students = cursor.fetchall()
-        if existing_students:
-            srns_in_teams = [s[0] for s in existing_students]
-            return jsonify({"error": f"Students already in a team: {', '.join(srns_in_teams)}"}), 400
+    return redirect(url_for('faculty_dashboard'))
+
+@app.route('/faculty/add_feedback', methods=['POST'])
+def faculty_add_feedback():
+    if session.get('role') != 'faculty':
+        flash("Access denied", "danger")
+        return redirect(url_for('login'))
+
+    meeting_id = request.form.get('meeting_id')
+    feedback = request.form.get('feedback')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE Meeting SET Feedback = %s WHERE Meeting_ID = %s", (feedback, meeting_id))
+        conn.commit()
+        flash("Feedback updated successfully!", "success")
+    except Error as e:
+        flash("Error updating feedback: " + str(e), "danger")
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('faculty_dashboard'))
+
+@app.route('/faculty/get_students_by_review/<int:review_id>')
+def faculty_get_students_by_review(review_id):
+    if session.get('role') != 'faculty':
+        return jsonify([])
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT s.SRN, s.Name
+        FROM Student s
+        JOIN Team_Student ts ON s.SRN = ts.SRN
+        JOIN Review r ON ts.Team_ID = r.Team_ID
+        WHERE r.Review_ID = %s
+    """, (review_id,))
+    data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(data)
 
 
-        # Start transaction
-        conn.start_transaction()
+@app.route('/faculty/evaluate_student', methods=['POST'])
+def faculty_evaluate_student():
+    if session.get('role') != 'faculty':
+        flash("Access denied", "danger")
+        return redirect(url_for('login'))
 
-        # 1. Insert into Team table
-        cursor.execute("INSERT INTO Team (Faculty_ID) VALUES (%s)", (mentor_id,))
-        team_id = cursor.lastrowid 
+    faculty_id = session.get('faculty_id')
+    student_srn = request.form.get('student_srn')
+    review_id = request.form.get('review_id')
+    rubric_ids = request.form.getlist('rubric_id[]')
+    marks = request.form.getlist('marks[]')
+    comments = request.form.getlist('comments[]')
 
-        # 2. Insert into Team_Student table
-        student_data = [(team_id, srn) for srn in student_srns]
-        insert_sql = "INSERT INTO Team_Student (Team_ID, SRN) VALUES (%s, %s)"
-        cursor.executemany(insert_sql, student_data)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        # validate each entry
+        for i in range(len(rubric_ids)):
+            rubric_id = rubric_ids[i]
+            mark = marks[i]
+            comment = comments[i] if comments[i] else None
+
+            cursor.execute("""
+                INSERT INTO Evaluation (Faculty_ID, SRN, Rubric_ID, Project_ID, Review_ID, Marks, Comments)
+                SELECT %s, %s, %s, tp.Project_ID, %s, %s, %s
+                FROM Team_Student ts
+                JOIN Team_Project tp ON ts.Team_ID = tp.Team_ID
+                WHERE ts.SRN = %s
+                ON DUPLICATE KEY UPDATE
+                    Marks = VALUES(Marks),
+                    Comments = VALUES(Comments)
+            """, (faculty_id, student_srn, rubric_id, review_id, mark, comment, student_srn))
 
         conn.commit()
+        flash("Evaluation submitted successfully", "success")
+    except Error as e:
+        flash(f"Error submitting evaluation: {e}", "danger")
+    finally:
+        cursor.close()
+        conn.close()
 
-        message = f"Team {team_id} created successfully with mentor {mentor_id} and students: {', '.join(student_srns)}"
-        return jsonify({"message": message, "team_id": team_id}), 201
+    return redirect(url_for('faculty_dashboard'))
+
+
+
+@app.route('/faculty/claim_team', methods=['POST'])
+def faculty_claim_team():
+    if session.get('role') != 'faculty':
+        flash("Access denied", "danger")
+        return redirect(url_for('login'))
+
+    team_id = request.form.get('team_id')
+    faculty_id = session.get('faculty_id')
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE Team SET Faculty_ID = %s WHERE Team_ID = %s AND Faculty_ID IS NULL", (faculty_id, team_id))
+        conn.commit()
+        if cursor.rowcount:
+            flash("Team claimed", "success")
+        else:
+            flash("Team already assigned", "warning")
+    except Error as e:
+        flash("Error claiming team: " + str(e), "danger")
+    finally:
+        cursor.close()
+        conn.close()
+    return redirect(url_for('faculty_dashboard'))
+
+# -----------------------------
+# Student routes
+# -----------------------------
+@app.route('/student/dashboard')
+def student_dashboard():
+    if session.get('role') != 'student':
+        flash("Access denied", "danger")
+        return redirect(url_for('login'))
+
+    srn = session.get('srn')
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # ✅ Student info
+    cursor.execute("""
+        SELECT s.SRN, s.Name AS StudentName, t.Team_ID, f.Name AS FacultyName,
+               p.Title AS ProjectTitle, p.Status AS ProjectStatus, p.Description AS ProjectDescription
+        FROM Student s
+        LEFT JOIN Team_Student ts ON s.SRN = ts.SRN
+        LEFT JOIN Team t ON ts.Team_ID = t.Team_ID
+        LEFT JOIN Faculty f ON t.Faculty_ID = f.Faculty_ID
+        LEFT JOIN Team_Project tp ON t.Team_ID = tp.Team_ID
+        LEFT JOIN Project p ON tp.Project_ID = p.Project_ID
+        WHERE s.SRN = %s
+        LIMIT 1
+    """, (srn,))
+    student_info = cursor.fetchone()
+
+    # ✅ Team members
+    team_members = []
+    meetings = []
+    if student_info and student_info.get('Team_ID'):
+        cursor.execute("""
+            SELECT s.Name, s.SRN 
+            FROM Team_Student ts 
+            JOIN Student s ON ts.SRN = s.SRN 
+            WHERE ts.Team_ID = %s
+        """, (student_info['Team_ID'],))
+        team_members = cursor.fetchall()
+
+        # ✅ Meetings
+        cursor.execute("""
+            SELECT m.Meeting_ID, m.DateTime, m.Feedback, f.Name AS FacultyName
+            FROM Meeting m
+            LEFT JOIN Faculty f ON m.Faculty_ID = f.Faculty_ID
+            WHERE m.Team_ID = %s
+            ORDER BY m.DateTime DESC
+        """, (student_info['Team_ID'],))
+        meetings = cursor.fetchall()
+
+    # ✅ Evaluations (no Evaluation_Date)
+    cursor.execute("""
+        SELECT e.Marks AS Score, f.Name AS FacultyName, e.Comments, e.Project_ID, e.Review_ID
+        FROM Evaluation e
+        LEFT JOIN Faculty f ON e.Faculty_ID = f.Faculty_ID
+        WHERE e.SRN = %s
+    """, (srn,))
+    evaluations = cursor.fetchall()
+
+     # ---- Review-wise total marks computation ----
+    cursor.execute("""
+        SELECT 
+            rt.Review_Name AS ReviewType,
+            r.Review_ID,
+            ROUND(SUM(avg_marks),2) AS TotalMarks,
+            ROUND(SUM(MaxTotal),2) AS MaxMarks
+        FROM (
+            SELECT 
+                e.Review_ID,
+                e.Rubric_ID,
+                AVG(e.Marks) AS avg_marks,
+                r2.Max_Marks AS MaxTotal
+            FROM Evaluation e
+            JOIN Rubric r2 ON e.Rubric_ID = r2.Rubric_ID
+            WHERE e.SRN = %s
+            GROUP BY e.Review_ID, e.Rubric_ID
+        ) sub
+        JOIN Review r ON r.Review_ID = sub.Review_ID
+        JOIN Review_Type rt ON rt.ReviewType_ID = r.ReviewType_ID
+        GROUP BY rt.Review_Name, r.Review_ID
+        ORDER BY r.Review_ID;
+    """, (srn,))
+    review_totals = cursor.fetchall()
+
+    # ✅ Upcoming reviews
+    upcoming_reviews = []
+    if student_info and student_info.get('Team_ID'):
+        cursor.execute("""
+            SELECT r.Review_ID, r.ReviewType_ID, r.Date, r.Venue,
+                   GROUP_CONCAT(CONCAT(f.Faculty_ID, ' - ', f.Name) SEPARATOR '; ') AS FacultyPanel
+            FROM Review r
+            LEFT JOIN Review_Panel rp ON r.Review_ID = rp.Review_ID
+            LEFT JOIN Faculty f ON rp.Faculty_ID = f.Faculty_ID
+            WHERE r.Team_ID = %s AND r.Date >= CURDATE()
+            GROUP BY r.Review_ID
+            ORDER BY r.Date ASC
+        """, (student_info['Team_ID'],))
+        upcoming_reviews = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT Team_ID FROM Team_Student WHERE SRN = %s
+    """, (srn,))
+    team_info = cursor.fetchone()
+
+    is_in_team = bool(team_info)
+    team_id = team_info["Team_ID"] if team_info else None
+
+    if team_info:
+
+        # Check if that team has a project assigned
+        cursor.execute("SELECT Project_ID FROM Team_Project WHERE Team_ID = %s", (team_id,))
+        project_row = cursor.fetchone()
+        has_project = bool(project_row)
+
+    # If in a team, fetch current team members
+    team_members = []
+    if is_in_team:
+        cursor.execute("""
+            SELECT s.SRN, s.Name 
+            FROM Student s
+            JOIN Team_Student ts ON s.SRN = ts.SRN
+            WHERE ts.Team_ID = %s
+        """, (team_id,))
+        team_members = cursor.fetchall()
+
+    # Fetch joinable teams (only if student not in a team)
+    available_teams = []
+    if not is_in_team:
+        cursor.execute("""
+            SELECT t.Team_ID, COUNT(ts.SRN) AS member_count
+            FROM Team t
+            LEFT JOIN Team_Student ts ON t.Team_ID = ts.Team_ID
+            GROUP BY t.Team_ID
+            HAVING member_count < 4
+        """)
+        available_teams = cursor.fetchall()
+
+
+    cursor.close()
+    conn.close()
+
+    return render_template('student_dashboard.html',
+                           student=student_info,
+                           team_members=team_members,
+                           meetings=meetings,
+                           evaluations=evaluations,
+                           upcoming_reviews=upcoming_reviews,
+                           is_in_team=is_in_team,
+                           has_project=has_project,
+                           available_teams=available_teams,
+                           review_totals=review_totals)
+
+
+@app.route('/student/add_teammate', methods=['POST'])
+def add_teammate():
+    if session.get('role') != 'student':
+        flash("Access denied", "danger")
+        return redirect(url_for('login'))
+
+    srn = request.form.get('srn')
+    teammate_srn = request.form.get('teammate_srn')
+    join_team_id = request.form.get('join_team_id')  # Optional hidden field when joining existing team
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        # Fetch current student
+        cursor.execute("SELECT SRN, Sem FROM Student WHERE SRN = %s", (srn,))
+        student = cursor.fetchone()
+        if not student:
+            flash("Your record was not found.", "danger")
+            return redirect(url_for('student_dashboard'))
+
+        # Check if already in a team
+        cursor.execute("SELECT Team_ID FROM Team_Student WHERE SRN = %s", (srn,))
+        my_team = cursor.fetchone()
+
+        # Fetch teammate if provided
+        teammate = None
+        if teammate_srn:
+            cursor.execute("SELECT SRN, Sem FROM Student WHERE SRN = %s", (teammate_srn,))
+            teammate = cursor.fetchone()
+            if not teammate:
+                flash("Teammate SRN not found.", "danger")
+                return redirect(url_for('student_dashboard'))
+
+            if teammate["Sem"] != student["Sem"]:
+                flash("Teammate must be in your semester.", "warning")
+                return redirect(url_for('student_dashboard'))
+
+            cursor.execute("SELECT Team_ID FROM Team_Student WHERE SRN = %s", (teammate_srn,))
+            their_team = cursor.fetchone()
+            if their_team:
+                flash("That student is already in another team.", "warning")
+                return redirect(url_for('student_dashboard'))
+
+        # CASE 1️⃣: Student already in a team → Add teammate
+        if my_team:
+            team_id = my_team["Team_ID"]
+
+            cursor.execute("SELECT COUNT(*) AS cnt FROM Team_Student WHERE Team_ID = %s", (team_id,))
+            if cursor.fetchone()["cnt"] >= 4:
+                flash("Your team already has 4 members.", "warning")
+                return redirect(url_for('student_dashboard'))
+
+            if teammate:
+                cursor.execute("INSERT INTO Team_Student (Team_ID, SRN) VALUES (%s, %s)", (team_id, teammate_srn))
+                conn.commit()
+                flash(f"{teammate_srn} added to your team!", "success")
+
+        # CASE 2️⃣: Student not in a team → Join existing or create new
+        else:
+            if join_team_id:
+                # Joining an existing team
+                cursor.execute("SELECT COUNT(*) AS cnt FROM Team_Student WHERE Team_ID = %s", (join_team_id,))
+                count = cursor.fetchone()["cnt"]
+                if count >= 4:
+                    flash("That team is already full (4 members).", "warning")
+                    return redirect(url_for('student_dashboard'))
+
+                cursor.execute("INSERT INTO Team_Student (Team_ID, SRN) VALUES (%s, %s)", (join_team_id, srn))
+                conn.commit()
+                flash("You have successfully joined the team!", "success")
+
+            else:
+                # Creating new team
+                cursor.execute("INSERT INTO Team (Faculty_ID) VALUES (NULL)")
+                team_id = cursor.lastrowid
+                cursor.execute("INSERT INTO Team_Student (Team_ID, SRN) VALUES (%s, %s)", (team_id, srn))
+
+                # Optionally add teammate if given
+                if teammate:
+                    cursor.execute("INSERT INTO Team_Student (Team_ID, SRN) VALUES (%s, %s)", (team_id, teammate_srn))
+
+                conn.commit()
+                flash("New team created successfully!", "success")
 
     except Error as e:
-        if conn and conn.is_connected(): conn.rollback() 
-        print(f"Error creating team: {e.errno} - {e.msg}")
-        return handle_db_error(e) # Use the helper
-    except Exception as e:
-         if conn and conn.is_connected(): conn.rollback()
-         import traceback
-         print(f"Unexpected Python error creating team: {e}")
-         traceback.print_exc()
-         return jsonify({"error": f"Server error: {e}"}), 500
+        conn.rollback()
+        flash(f"Error: {str(e)}", "danger")
     finally:
-        if cursor: cursor.close()
-        if conn and conn.is_connected(): conn.close()
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('student_dashboard'))
 
 
-@app.route('/api/project', methods=['POST'])
-def create_project():
-    """Creates a new project and assigns it to a team."""
-    data = request.json
-    title = data.get('title')
-    team_id = data.get('team_id')
 
-    if not title or not team_id:
-        return jsonify({"error": "Project title and team ID are required"}), 400
+@app.route('/student/add_project', methods=['POST'])
+def add_project():
+    if session.get('role') != 'student':
+        flash("Access denied", "danger")
+        return redirect(url_for('login'))
 
-    conn = None
-    cursor = None
+    srn = request.form.get('srn')
+    title = request.form.get('title')
+    description = request.form.get('description', '')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
     try:
-        conn = get_db_connection()
-        if not conn: return jsonify({"error": "DB connection failed"}), 500
-        cursor = conn.cursor()
-
-        conn.start_transaction()
-
-        # 1. Insert into Project table
-        cursor.execute("INSERT INTO Project (Title) VALUES (%s)", (title,))
+        # insert project
+        cursor.execute("INSERT INTO Project (Title, Description, Status) VALUES (%s, %s, %s)",
+                       (title, description, 'Ongoing'))
         project_id = cursor.lastrowid
 
-        # 2. Insert into Team_Project table
-        cursor.execute("INSERT INTO Team_Project (Team_ID, Project_ID) VALUES (%s, %s)", (team_id, project_id))
-
-        conn.commit()
-
-        return jsonify({"message": f"Project '{title}' created and assigned to team {team_id}", "project_id": project_id}), 201
-
+        # find student's team
+        cursor.execute("SELECT Team_ID FROM Team_Student WHERE SRN = %s LIMIT 1", (srn,))
+        row = cursor.fetchone()
+        if row:
+            team_id = row[0]
+            # map team to project
+            cursor.execute("INSERT INTO Team_Project (Team_ID, Project_ID) VALUES (%s, %s)", (team_id, project_id))
+            conn.commit()
+            flash("Project added & assigned to your team", "success")
+        else:
+            conn.commit()
+            flash("Project added but you're not in a team - please create or join a team", "warning")
     except Error as e:
-        if conn and conn.is_connected(): conn.rollback()
-        print(f"Error creating project: {e.errno} - {e.msg}")
-        # Check for unique constraint violation (team already has a project)
-        if e.errno == errorcode.ER_DUP_ENTRY:
-             return jsonify({"error": f"Team {team_id} already has a project assigned."}), 400
-        return handle_db_error(e) # Use the helper
-    except Exception as e:
-         if conn and conn.is_connected(): conn.rollback()
-         import traceback
-         print(f"Unexpected Python error creating project: {e}")
-         traceback.print_exc()
-         return jsonify({"error": f"Server error: {e}"}), 500
+        flash("Error adding project: " + str(e), "danger")
     finally:
-        if cursor: cursor.close()
-        if conn and conn.is_connected(): conn.close()
-
-
-@app.route('/api/review', methods=['POST'])
-def add_review():
-    """Adds a new review by calling the Stored Procedure."""
-    data = request.json
-    required_fields = ['rev_type_id', 'team_id', 'rev_date', 'panel_faculty_ids']
-    if not all(field in data and data[field] for field in required_fields):
-         return jsonify({"error": "Missing required fields for review (type, team, date, panel)"}), 400
-
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        if not conn: return jsonify({"error": "DB connection failed"}), 500
-        cursor = conn.cursor()
-
-        args = [
-            data['rev_type_id'],
-            data['team_id'],
-            data['rev_date'],
-            data.get('venue', None), # Venue is optional
-            data['panel_faculty_ids']
-        ]
-
-        # Use callproc correctly
-        cursor.callproc('AddReviewForTeam', args) 
-        conn.commit() # Commit after successful call
-
-        return jsonify({"message": "Review added successfully!"}), 201
-
-    except Error as e:
-        # Catch specific trigger/procedure errors based on MESSAGE_TEXT
-        print(f"Error adding review (DB): {e.errno} - {e.msg}")
-        return handle_db_error(e) # Use the helper
-    except Exception as e:
-         import traceback
-         print(f"Unexpected Python error adding review: {e}")
-         traceback.print_exc()
-         return jsonify({"error": f"Server error: {e}"}), 500
-    finally:
-        if cursor: cursor.close()
-        if conn and conn.is_connected(): conn.close()
-
-
-@app.route('/api/evaluation', methods=['POST'])
-def add_evaluation():
-    """Adds a new evaluation, firing the check_marks trigger."""
-    data = request.json
-    required_fields = ['faculty_id', 'srn', 'rubric_id', 'project_id', 'review_id', 'marks']
-    if not all(field in data and data[field] is not None for field in required_fields): # Check for None too
-         return jsonify({"error": "Missing required fields for evaluation"}), 400
-
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        if not conn: return jsonify({"error": "DB connection failed"}), 500
-        cursor = conn.cursor()
-
-        sql = """
-        INSERT INTO Evaluation 
-        (Faculty_ID, SRN, Rubric_ID, Project_ID, Review_ID, Marks, Comments) 
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """
-        val = (
-            data['faculty_id'],
-            data['srn'],
-            data['rubric_id'],
-            data['project_id'],
-            data['review_id'],
-            data['marks'],
-            data.get('comments', None) # Comments optional
-        )
-        
-        cursor.execute(sql, val)
-        conn.commit()
-        
-        return jsonify({"message": "Evaluation submitted successfully!"}), 201
-
-    except Error as e:
-        print(f"Error adding evaluation (DB): {e.errno} - {e.msg}")
-        #
-        # THIS IS THE INDENTATION FIX
-        #
-        if conn and conn.is_connected(): conn.rollback()
-        return handle_db_error(e) # Use the helper
-    except Exception as e:
-         if conn and conn.is_connected(): conn.rollback()
-         import traceback
-         print(f"Unexpected Python error adding evaluation: {e}")
-         traceback.print_exc()
-         return jsonify({"error": f"Server error: {e}"}), 500
-    finally:
-        if cursor: cursor.close()
-        if conn and conn.is_connected(): conn.close()
-
-
-@app.route('/api/meeting', methods=['POST'])
-def log_meeting():
-    """Logs a meeting, firing the check_meeting_mentor trigger."""
-    data = request.json
-    required_fields = ['faculty_id', 'team_id', 'datetime']
-    if not all(field in data and data[field] for field in required_fields):
-         return jsonify({"error": "Missing required fields for meeting (faculty, team, datetime)"}), 400
-
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        if not conn: return jsonify({"error": "DB connection failed"}), 500
-        cursor = conn.cursor()
-
-        sql = """
-        INSERT INTO Meeting (Faculty_ID, Team_ID, DateTime, Feedback) 
-        VALUES (%s, %s, %s, %s)
-        """
-        val = (
-            data['faculty_id'],
-            data['team_id'],
-            data['datetime'],
-            data.get('feedback', None) # Feedback optional
-        )
-        
-        cursor.execute(sql, val)
-        conn.commit()
-        
-        return jsonify({"message": "Meeting logged successfully!"}), 201
-
-    except Error as e:
-        if conn and conn.is_connected(): conn.rollback()
-        print(f"Error logging meeting (DB): {e.errno} - {e.msg}")
-        return handle_db_error(e) # Use the helper
-    except Exception as e:
-         if conn and conn.is_connected(): conn.rollback()
-         import traceback
-         print(f"Unexpected Python error logging meeting: {e}")
-         traceback.print_exc()
-         return jsonify({"error": f"Server error: {e}"}), 500
-    finally:
-        if cursor: cursor.close()
-        if conn and conn.is_connected(): conn.close()
-
-
-# =========================================
-# REPORT Endpoints (for Admin)
-# =========================================
-
-@app.route('/api/reports/mentor-workload', methods=['GET'])
-def get_mentor_workload():
-    """Gets data from the Mentor_View."""
-    try:
-        conn = get_db_connection()
-        if not conn: return jsonify({"error": "DB connection failed"}), 500
-        cursor = conn.cursor(dictionary=True)
-        # Ensure Mentor_View exists and query it
-        cursor.execute("SELECT Faculty_ID, Faculty_Name, Team_ID, Team_Size FROM Mentor_View ORDER BY Faculty_Name, Team_ID")
-        data = cursor.fetchall()
         cursor.close()
         conn.close()
-        # Use json.dumps with the CORRECT handler
-        import json
-        return app.response_class(
-            response=json.dumps(data, default=json_serializer, indent=4), # <-- USES THE NEW HELPER
-            status=200,
-            mimetype='application/json'
+    return redirect(url_for('student_dashboard'))
+
+# -----------------------------
+# Admin routes (full management)
+# -----------------------------
+@app.route('/admin/dashboard')
+def admin_dashboard():
+    if session.get('role') != 'admin':
+        flash("Access denied", "danger")
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("SELECT COUNT(*) AS total_students FROM Student")
+    total_students = cursor.fetchone()['total_students']
+    cursor.execute("SELECT COUNT(*) AS total_faculty FROM Faculty")
+    total_faculty = cursor.fetchone()['total_faculty']
+    cursor.execute("SELECT COUNT(*) AS total_projects FROM Project")
+    total_projects = cursor.fetchone()['total_projects']
+    cursor.execute("SELECT COUNT(*) AS total_teams FROM Team")
+    total_teams = cursor.fetchone()['total_teams']
+    cursor.execute("SELECT COUNT(*) AS total_reviews FROM Review")
+    total_reviews = cursor.fetchone()['total_reviews']
+
+    cursor.execute("SELECT * FROM Student ORDER BY Name")
+    students = cursor.fetchall()
+    # Fetch all faculty with teams they mentor
+    cursor.execute("""
+        SELECT f.Faculty_ID, f.Name, f.Email,
+            GROUP_CONCAT(t.Team_ID ORDER BY t.Team_ID SEPARATOR ', ') AS TeamIDs
+        FROM Faculty f
+        LEFT JOIN Team t ON f.Faculty_ID = t.Faculty_ID
+        GROUP BY f.Faculty_ID
+        ORDER BY f.Faculty_ID
+    """)
+    faculty = cursor.fetchall()
+
+    cursor.execute("""
+        SELECT pr.Project_ID, pr.Title, pr.Status, pr.Description, tp.Team_ID
+        FROM Project pr
+        LEFT JOIN Team_Project tp ON pr.Project_ID = tp.Project_ID
+        ORDER BY pr.Title
+    """)
+    projects = cursor.fetchall()
+    cursor.execute("""
+        SELECT t.Team_ID, t.Faculty_ID, GROUP_CONCAT(s.Name SEPARATOR ', ') AS Members
+        FROM Team t
+        LEFT JOIN Team_Student ts ON t.Team_ID = ts.Team_ID
+        LEFT JOIN Student s ON ts.SRN = s.SRN
+        GROUP BY t.Team_ID, t.Faculty_ID
+        ORDER BY t.Team_ID
+    """)
+    teams = cursor.fetchall()
+
+    # Fetch unassigned students (not in any team)
+    cursor.execute("""
+        SELECT s.SRN, s.Name, s.Sem
+        FROM Student s
+        LEFT JOIN Team_Student ts ON s.SRN = ts.SRN
+        WHERE ts.Team_ID IS NULL
+        ORDER BY s.Sem, s.SRN
+    """)
+    unassigned_students = cursor.fetchall()
+
+    # Fetch teams that don't have a project assigned
+    cursor.execute("""
+        SELECT t.Team_ID
+        FROM Team t
+        LEFT JOIN Team_Project tp ON t.Team_ID = tp.Team_ID
+        WHERE tp.Project_ID IS NULL
+        ORDER BY t.Team_ID
+    """)
+    unassigned_teams = cursor.fetchall()
+
+    # Fetch all reviews with team, review type, faculty panel, date, and marks
+    cursor.execute("""
+        SELECT 
+            r.Review_ID,
+            rt.Review_Name AS ReviewType,
+            r.Date,
+            r.Venue,
+            GROUP_CONCAT(DISTINCT rp.Faculty_ID ORDER BY rp.Faculty_ID ASC) AS FacultyPanel,
+            t.Team_ID,
+            p.Title AS ProjectTitle
+        FROM Review r
+        LEFT JOIN Review_Type rt ON r.ReviewType_ID = rt.ReviewType_ID
+        LEFT JOIN Review_Panel rp ON r.Review_ID = rp.Review_ID
+        LEFT JOIN Team t ON r.Team_ID = t.Team_ID
+        LEFT JOIN Team_Project tp ON t.Team_ID = tp.Team_ID
+        LEFT JOIN Project p ON tp.Project_ID = p.Project_ID
+        GROUP BY r.Review_ID, rt.Review_Name, r.Date, r.Venue, t.Team_ID, p.Title
+        ORDER BY r.Date DESC;
+    """)
+    reviews = cursor.fetchall()
+
+    # Fetch review types for the dropdown
+    cursor.execute("SELECT * FROM Review_Type")
+    review_types = cursor.fetchall()
+
+
+    cursor.close()
+    conn.close()
+
+    return render_template('admin_dashboard.html',
+                           totals={
+                               'students': total_students,
+                               'faculty': total_faculty,
+                               'projects': total_projects,
+                               'teams': total_teams,
+                               'reviews': total_reviews
+                           },
+                           students=students,
+                           faculty=faculty,
+                           projects=projects,
+                           teams=teams,
+                           unassigned_students=unassigned_students,
+                           unassigned_teams=unassigned_teams,
+                           reviews=reviews,
+                           review_types=review_types)
+
+@app.route('/admin/add_student', methods=['POST'])
+def admin_add_student():
+    if session.get('role') != 'admin':
+        flash("Access denied", "danger")
+        return redirect(url_for('login'))
+    
+    srn = request.form.get('srn')
+    name = request.form.get('name')
+    email = request.form.get('email')
+    sem = request.form.get('sem')
+
+    # Validate sem before insert
+    try:
+        sem = int(sem)
+        if sem < 1 or sem > 8:
+            flash("Semester must be between 1 and 8", "warning")
+            return redirect(url_for('admin_dashboard'))
+    except (TypeError, ValueError):
+        flash("Invalid semester value", "danger")
+        return redirect(url_for('admin_dashboard'))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO Student (SRN, Name, Email, Sem) VALUES (%s, %s, %s, %s)",
+            (srn, name, email, sem)
         )
+        conn.commit()
+        flash("Student added successfully", "success")
     except Error as e:
-        print(f"Error fetching mentor workload: {e.errno} - {e.msg}")
-         # Check if the view doesn't exist
-        if e.errno == errorcode.ER_NO_SUCH_TABLE:
-            return jsonify({"error": "Server Error: 'Mentor_View' not found in the database. Please run the SQL setup script."}), 500
-        return jsonify({"error": str(e.msg)}), 500
-    except Exception as e:
-        import traceback
-        print(f"Unexpected Python error fetching mentor workload: {e}")
-        traceback.print_exc()
-        return jsonify({"error": f"Server error: {e}"}), 500
-
-#
-# THIS IS THE ROUTE THAT WAS CAUSING THE 404
-#
-@app.route('/api/reports/student-marks/<string:srn>', methods=['GET'])
-def get_student_marks(srn):
-    """Gets total marks for a student using the GetStudentTotalMarks function."""
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        if not conn: return jsonify({"error": "DB connection failed"}), 500
-        cursor = conn.cursor() 
-        
-        # Correctly call the function and fetch the scalar result
-        cursor.execute("SELECT GetStudentTotalMarks(%s) AS TotalMarksResult", (srn,))
-        result = cursor.fetchone() 
-        
-        total_marks = 0.0 # Default to float 0.0
-
-        if result and result[0] is not None:
-            # The function returns DECIMAL
-            marks_value = result[0]
-            print(f"SRN: {srn} - Raw result from DB function: {marks_value} (Type: {type(marks_value)})") # Debug raw value
-            try:
-                # Explicitly convert potential Decimal to float
-                total_marks = float(marks_value)
-            except (TypeError, ValueError) as conversion_error:
-                 print(f"SRN: {srn} - Error converting marks value '{marks_value}' to float: {conversion_error}")
-                 pass # Fallback to default 0.0 is already set
-        else:
-             print(f"SRN: {srn} - No marks found or function returned NULL.") # Log if no result
-
-        print(f"SRN: {srn} - Final total_marks value being returned: {total_marks}") # Log final value
-
-        return jsonify({"TotalMarks": total_marks}) 
-        
-    except Error as e:
-        # Log the detailed database error on the server
-        print(f"Database Error in get_student_marks for SRN {srn}: {e.errno} - {e.msg}")
-         # Check if the function doesn't exist
-        if e.errno == errorcode.ER_SP_DOES_NOT_EXIST:
-             return jsonify({"error": "Server Error: 'GetStudentTotalMarks' function not found in the database."}), 500
-        return jsonify({"error": f"Database error executing function: {e.msg}"}), 500
-    except Exception as e:
-        # Catch other unexpected Python errors
-        import traceback
-        print(f"Unexpected Python error in get_student_marks for SRN {srn}: {e}")
-        traceback.print_exc()
-        return jsonify({"error": f"Server processing error: {e}"}), 500
+        flash("Error adding student: " + str(e), "danger")
     finally:
-        if cursor: cursor.close()
-        if conn and conn.is_connected(): conn.close()
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('admin_dashboard'))
 
 
-@app.route('/api/reports/team-average/<int:team_id>/<int:review_id>', methods=['GET'])
-def get_team_average(team_id, review_id):
-    """Gets average marks for a team in a review using GetTeamAverageMarks function."""
-    conn = None
-    cursor = None
+@app.route('/admin/edit_student', methods=['POST'])
+def admin_edit_student():
+    if session.get('role') != 'admin':
+        return redirect(url_for('login'))
+    srn = request.form.get('srn'); name = request.form.get('name'); email = request.form.get('email')
+    conn = get_db_connection(); cursor = conn.cursor()
     try:
-        conn = get_db_connection()
-        if not conn: return jsonify({"error": "DB connection failed"}), 500
-        cursor = conn.cursor()
-        
-        # Correctly call the function
-        cursor.execute("SELECT GetTeamAverageMarks(%s, %s) AS AverageMarksResult", (team_id, review_id))
-        result = cursor.fetchone()
+        cursor.execute("UPDATE Student SET Name=%s, Email=%s WHERE SRN=%s", (name, email, srn))
+        conn.commit(); flash("Student updated", "success")
+    except Error as e:
+        flash("Error updating student: " + str(e), "danger")
+    finally:
+        cursor.close(); conn.close()
+    return redirect(url_for('admin_dashboard'))
 
-        avg_marks = 0.0 # Default to float 0.0
-        if result and result[0] is not None:
-            # Convert Decimal result from DB to float for JSON
-             marks_value_avg = result[0]
-             print(f"Team: {team_id}, Review: {review_id} - Raw result from DB function: {marks_value_avg} (Type: {type(marks_value_avg)})")
-             try:
-                avg_marks = float(marks_value_avg)
-             except (TypeError, ValueError) as conversion_error:
-                 print(f"Team: {team_id}, Review: {review_id} - Error converting avg marks value '{marks_value_avg}' to float: {conversion_error}")
-                 pass # Fallback to 0.0
-        else:
-             print(f"Team: {team_id}, Review: {review_id} - No marks found or function returned NULL.")
-        
-         # Debugging print on server
-        print(f"Team: {team_id}, Review: {review_id} - Final AverageMarks value being returned: {avg_marks}")
+@app.route('/admin/delete_student', methods=['POST'])
+def admin_delete_student():
+    if session.get('role') != 'admin':
+        return redirect(url_for('login'))
+    srn = request.form.get('srn')
+    conn = get_db_connection(); cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM Team_Student WHERE SRN = %s", (srn,))
+        cursor.execute("DELETE FROM Evaluation WHERE SRN = %s", (srn,))
+        cursor.execute("DELETE FROM Student WHERE SRN = %s", (srn,))
+        conn.commit(); flash("Student deleted", "success")
+    except Error as e:
+        flash("Error deleting student: " + str(e), "danger")
+    finally:
+        cursor.close(); conn.close()
+    return redirect(url_for('admin_dashboard'))
 
-        return jsonify({"AverageMarks": avg_marks})
+@app.route('/admin/add_faculty', methods=['POST'])
+def admin_add_faculty():
+    if session.get('role') != 'admin':
+        flash("Access denied", "danger")
+        return redirect(url_for('login'))
+
+    faculty_id = request.form.get('faculty_id')
+    name = request.form.get('name')
+    email = request.form.get('email')
+
+    # Validate inputs
+    if not faculty_id or not faculty_id.isdigit():
+        flash("Invalid Faculty ID", "warning")
+        return redirect(url_for('admin_dashboard'))
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "INSERT INTO Faculty (Faculty_ID, Name, Email) VALUES (%s, %s, %s)",
+            (faculty_id, name, email)
+        )
+        conn.commit()
+        flash("Faculty added successfully", "success")
+    except Error as e:
+        flash("Error adding faculty: " + str(e), "danger")
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/edit_faculty', methods=['POST'])
+def admin_edit_faculty():
+    if session.get('role') != 'admin':
+        return redirect(url_for('login'))
+    fid = request.form.get('faculty_id'); name = request.form.get('name'); email = request.form.get('email')
+    conn = get_db_connection(); cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE Faculty SET Name=%s, Email=%s WHERE Faculty_ID=%s", (name, email, fid))
+        conn.commit(); flash("Faculty updated", "success")
+    except Error as e:
+        flash("Error updating faculty: " + str(e), "danger")
+    finally:
+        cursor.close(); conn.close()
+    return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/delete_faculty', methods=['POST'])
+def admin_delete_faculty():
+    if session.get('role') != 'admin':
+        return redirect(url_for('login'))
+    fid = request.form.get('faculty_id')
+    conn = get_db_connection(); cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE Team SET Faculty_ID = NULL WHERE Faculty_ID = %s", (fid,))
+        cursor.execute("DELETE FROM Review_Panel WHERE Faculty_ID = %s", (fid,))
+        cursor.execute("DELETE FROM Faculty WHERE Faculty_ID = %s", (fid,))
+        conn.commit(); flash("Faculty removed", "success")
+    except Error as e:
+        flash("Error deleting faculty: " + str(e), "danger")
+    finally:
+        cursor.close(); conn.close()
+    return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin_add_project', methods=['POST'])
+def admin_add_project():
+    if session.get('role') != 'admin':
+        flash("Access denied", "danger")
+        return redirect(url_for('login'))
+
+    title = request.form.get('title')
+    status = request.form.get('status', 'Ongoing')
+    description = request.form.get('description')
+    team_id = request.form.get('team_id')
+
+    if not team_id:
+        flash("Please select a team to assign the project.", "warning")
+        return redirect(url_for('admin_dashboard'))
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        # Check if team already has a project
+        cursor.execute("SELECT Project_ID FROM Team_Project WHERE Team_ID = %s", (team_id,))
+        existing = cursor.fetchone()
+        if existing:
+            flash(f"Team {team_id} already has a project assigned (Project ID: {existing['Project_ID']}).", "warning")
+            return redirect(url_for('admin_dashboard'))
+
+        # Insert into Project table
+        cursor.execute("""
+            INSERT INTO Project (Title, Description, Status)
+            VALUES (%s, %s, %s)
+        """, (title, description, status))
+        project_id = cursor.lastrowid
+
+        # Link to Team
+        cursor.execute("""
+            INSERT INTO Team_Project (Team_ID, Project_ID)
+            VALUES (%s, %s)
+        """, (team_id, project_id))
+
+        conn.commit()
+        flash(f"Project '{title}' added and assigned to Team {team_id}.", "success")
 
     except Error as e:
-        print(f"Database Error in get_team_average for Team {team_id}, Review {review_id}: {e.errno} - {e.msg}")
-        if e.errno == errorcode.ER_SP_DOES_NOT_EXIST:
-             return jsonify({"error": "Server Error: 'GetTeamAverageMarks' function not found in the database."}), 500
-        return jsonify({"error": f"Database error executing function: {e.msg}"}), 500
-    except Exception as e:
-         import traceback
-         print(f"Unexpected Python error in get_team_average for Team {team_id}, Review {review_id}: {e}")
-         traceback.print_exc()
-         return jsonify({"error": f"Server processing error: {e}"}), 500
-    finally:
-        if cursor: cursor.close()
-        if conn and conn.is_connected(): conn.close()
+        conn.rollback()
+        flash(f"Error adding project: {e}", "danger")
 
-# =========================================
-# RUN SERVER
-# =========================================
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/edit_project', methods=['POST'])
+def admin_edit_project():
+    if session.get('role') != 'admin':
+        return redirect(url_for('login'))
+    pid = request.form.get('project_id'); title = request.form.get('title'); desc = request.form.get('description',''); status = request.form.get('status','Ongoing')
+    conn = get_db_connection(); cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE Project SET Title=%s, Description=%s, Status=%s WHERE Project_ID=%s", (title, desc, status, pid))
+        conn.commit(); flash("Project updated", "success")
+    except Error as e:
+        flash("Error updating project: " + str(e), "danger")
+    finally:
+        cursor.close(); conn.close()
+    return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/delete_project', methods=['POST'])
+def admin_delete_project():
+    if session.get('role') != 'admin':
+        return redirect(url_for('login'))
+    pid = request.form.get('project_id')
+    conn = get_db_connection(); cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM Team_Project WHERE Project_ID = %s", (pid,))
+        cursor.execute("DELETE FROM Evaluation WHERE Project_ID = %s", (pid,))
+        cursor.execute("DELETE FROM Project WHERE Project_ID = %s", (pid,))
+        conn.commit(); flash("Project deleted", "success")
+    except Error as e:
+        flash("Error deleting project: " + str(e), "danger")
+    finally:
+        cursor.close(); conn.close()
+    return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin_add_team', methods=['POST'])
+def admin_add_team():
+    if session.get('role') != 'admin':
+        flash("Access denied.", "danger")
+        return redirect(url_for('login'))
+
+    faculty_id = request.form.get('faculty_id') or None
+    student_srns = request.form.getlist('student_srns')  # because <select multiple>
+
+    if not student_srns or len(student_srns) == 0:
+        flash("Select at least one student to form a team.", "warning")
+        return redirect(url_for('admin_dashboard'))
+
+    if len(student_srns) > 4:
+        flash("A team cannot have more than 4 members.", "warning")
+        return redirect(url_for('admin_dashboard'))
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        # Validate students are still unassigned (no race condition)
+        cursor.execute("""
+            SELECT SRN FROM Team_Student WHERE SRN IN (%s)
+        """ % ','.join(['%s'] * len(student_srns)), tuple(student_srns))
+        already_assigned = [row['SRN'] for row in cursor.fetchall()]
+
+        if already_assigned:
+            flash(f"Cannot create team. These students are already assigned to a team: {', '.join(already_assigned)}", "danger")
+            return redirect(url_for('admin_dashboard'))
+
+        # Create team
+        if faculty_id:
+            cursor.execute("INSERT INTO Team (Faculty_ID) VALUES (%s)", (faculty_id,))
+        else:
+            cursor.execute("INSERT INTO Team (Faculty_ID) VALUES (NULL)")
+        team_id = cursor.lastrowid
+
+        # Add students to Team_Student
+        for srn in student_srns:
+            cursor.execute("INSERT INTO Team_Student (Team_ID, SRN) VALUES (%s, %s)", (team_id, srn))
+
+        conn.commit()
+        flash(f"Team {team_id} created successfully with {len(student_srns)} member(s).", "success")
+
+    except Error as e:
+        conn.rollback()
+        flash("Error creating team: " + str(e), "danger")
+
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin_add_team_member', methods=['POST'])
+def admin_add_team_member():
+    if session.get('role') != 'admin':
+        flash("Access denied.", "danger")
+        return redirect(url_for('login'))
+
+    team_id = request.form.get('team_id')
+    srn = request.form.get('srn')
+
+    if not team_id or not srn:
+        flash("Team and student are required.", "warning")
+        return redirect(url_for('admin_dashboard'))
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        # Check if team already has 4 members
+        cursor.execute("SELECT COUNT(*) AS cnt FROM Team_Student WHERE Team_ID = %s", (team_id,))
+        count = cursor.fetchone()['cnt']
+        if count >= 4:
+            flash(f"Team {team_id} already has 4 members. Cannot add more.", "warning")
+            return redirect(url_for('admin_dashboard'))
+
+        # Check if student already belongs to a team
+        cursor.execute("SELECT Team_ID FROM Team_Student WHERE SRN = %s", (srn,))
+        existing = cursor.fetchone()
+        if existing:
+            flash(f"Student {srn} already belongs to Team {existing['Team_ID']}.", "danger")
+            return redirect(url_for('admin_dashboard'))
+
+        # Add student
+        cursor.execute("INSERT INTO Team_Student (Team_ID, SRN) VALUES (%s, %s)", (team_id, srn))
+        conn.commit()
+        flash(f"Student {srn} added to Team {team_id}.", "success")
+
+    except Error as e:
+        conn.rollback()
+        flash("Error adding team member: " + str(e), "danger")
+
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin_remove_team_member', methods=['POST'])
+def admin_remove_team_member():
+    if session.get('role') != 'admin':
+        flash("Access denied.", "danger")
+        return redirect(url_for('login'))
+
+    team_id = request.form.get('team_id')
+    srn = request.form.get('srn')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("DELETE FROM Team_Student WHERE Team_ID = %s AND SRN = %s", (team_id, srn))
+        conn.commit()
+        flash(f"Student {srn} removed from Team {team_id}.", "success")
+    except Error as e:
+        conn.rollback()
+        flash("Error removing team member: " + str(e), "danger")
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/delete_team', methods=['POST'])
+def admin_delete_team():
+    if session.get('role') != 'admin':
+        return redirect(url_for('login'))
+    tid = request.form.get('team_id')
+    conn = get_db_connection(); cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM Team_Student WHERE Team_ID = %s", (tid,))
+        cursor.execute("DELETE FROM Team_Project WHERE Team_ID = %s", (tid,))
+        cursor.execute("DELETE FROM Team WHERE Team_ID = %s", (tid,))
+        conn.commit(); flash("Team deleted", "success")
+    except Error as e:
+        flash("Error deleting team: " + str(e), "danger")
+    finally:
+        cursor.close(); conn.close()
+    return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/assign_faculty', methods=['POST'])
+def admin_assign_faculty():
+    if session.get('role') != 'admin':
+        return redirect(url_for('login'))
+    team_id = request.form.get('team_id'); fid = request.form.get('faculty_id')
+    conn = get_db_connection(); cursor = conn.cursor()
+    try:
+        cursor.execute("UPDATE Team SET Faculty_ID = %s WHERE Team_ID = %s", (fid, team_id))
+        conn.commit(); flash("Faculty assigned", "success")
+    except Error as e:
+        flash("Error assigning faculty: " + str(e), "danger")
+    finally:
+        cursor.close(); conn.close()
+    return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin/assign_project', methods=['POST'])
+def admin_assign_project():
+    if session.get('role') != 'admin':
+        return redirect(url_for('login'))
+    team_id = request.form.get('team_id'); project_id = request.form.get('project_id')
+    conn = get_db_connection(); cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM Team_Project WHERE Team_ID = %s", (team_id,))
+        cursor.execute("INSERT INTO Team_Project (Team_ID, Project_ID) VALUES (%s, %s)", (team_id, project_id))
+        conn.commit(); flash("Project assigned", "success")
+    except Error as e:
+        flash("Error assigning project: " + str(e), "danger")
+    finally:
+        cursor.close(); conn.close()
+    return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin_edit_review', methods=['POST'])
+def admin_edit_review():
+    if session.get('role') != 'admin':
+        flash("Access denied.", "danger")
+        return redirect(url_for('login'))
+
+    review_id = request.form.get('review_id')
+    date = request.form.get('date')
+    venue = request.form.get('venue')
+    panel_faculty_ids = request.form.get('panel_faculty_ids', '')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        # Update review details
+        cursor.execute("UPDATE Review SET Date=%s, Venue=%s WHERE Review_ID=%s", (date, venue, review_id))
+
+        # Update panel assignments
+        cursor.execute("DELETE FROM Review_Panel WHERE Review_ID=%s", (review_id,))
+        if panel_faculty_ids.strip():
+            ids = [fid.strip() for fid in panel_faculty_ids.split(',') if fid.strip()]
+            for fid in ids:
+                cursor.execute("INSERT INTO Review_Panel (Review_ID, Faculty_ID) VALUES (%s, %s)", (review_id, fid))
+
+        conn.commit()
+        flash(f"Review {review_id} updated successfully.", "success")
+
+    except Error as e:
+        conn.rollback()
+        flash("Error updating review: " + str(e), "danger")
+
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('admin_dashboard'))
+
+@app.route('/admin_delete_review', methods=['POST'])
+def admin_delete_review():
+    if session.get('role') != 'admin':
+        flash("Access denied.", "danger")
+        return redirect(url_for('login'))
+
+    review_id = request.form.get('review_id')
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("DELETE FROM Review_Panel WHERE Review_ID=%s", (review_id,))
+        cursor.execute("DELETE FROM Evaluation WHERE Review_ID=%s", (review_id,))
+        cursor.execute("DELETE FROM Review WHERE Review_ID=%s", (review_id,))
+        conn.commit()
+        flash(f"Review {review_id} deleted successfully.", "success")
+
+    except Error as e:
+        conn.rollback()
+        flash("Error deleting review: " + str(e), "danger")
+
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/schedule_review', methods=['POST'])
+def admin_schedule_review():
+    if session.get('role') != 'admin':
+        return redirect(url_for('login'))
+
+    team_id = request.form.get('team_id')
+    review_type_id = request.form.get('review_type_id')
+    date = request.form.get('date')
+    venue = request.form.get('venue')
+    panel_faculty_ids = request.form.get('panel_faculty_ids', '').strip()
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        # Insert into Review table
+        cursor.execute("""
+            INSERT INTO Review (ReviewType_ID, Team_ID, Date, Venue)
+            VALUES (%s, %s, %s, %s)
+        """, (review_type_id, team_id, date, venue))
+        review_id = cursor.lastrowid
+
+        # Build panel faculty list (mentor + additional)
+        # Get mentor from Team
+        cursor.execute("SELECT Faculty_ID FROM Team WHERE Team_ID = %s", (team_id,))
+        mentor_row = cursor.fetchone()
+        mentor_id = mentor_row[0] if mentor_row and mentor_row[0] else None
+
+        faculty_ids = set()
+        if panel_faculty_ids:
+            faculty_ids.update(fid.strip() for fid in panel_faculty_ids.split(',') if fid.strip())
+        if mentor_id:
+            faculty_ids.add(str(mentor_id))
+
+        # Insert each faculty into Review_Panel
+        for fid in faculty_ids:
+            cursor.execute("INSERT INTO Review_Panel (Review_ID, Faculty_ID) VALUES (%s, %s)", (review_id, fid))
+
+        conn.commit()
+        flash(f"Review scheduled successfully for Team {team_id}.", "success")
+
+    except Exception as e:
+        conn.rollback()
+        flash(f"Error scheduling review: {e}", "danger")
+
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/get_review_details/<int:review_id>')
+def admin_get_review_details(review_id):
+    if session.get('role') != 'admin':
+        return jsonify({"error": "Unauthorized"}), 403
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("""
+        SELECT 
+            e.Evaluation_ID,
+            s.SRN,
+            s.Name AS StudentName,
+            r.Rubric_Name,
+            e.Marks,
+            e.Comments,
+            f.Name AS FacultyName,
+            e.Created_At
+        FROM Evaluation e
+        JOIN Student s ON e.SRN = s.SRN
+        JOIN Rubric r ON e.Rubric_ID = r.Rubric_ID
+        JOIN Faculty f ON e.Faculty_ID = f.Faculty_ID
+        WHERE e.Review_ID = %s
+        ORDER BY s.SRN, r.Rubric_Name;
+    """, (review_id,))
+
+    data = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    return jsonify(data)
+
+
+@app.route('/admin/get_students')
+def admin_get_students():
+    if session.get('role') != 'admin':
+        return jsonify({'error': 'Access denied'}), 403
+    conn = get_db_connection(); cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM Student ORDER BY Name")
+    rows = cursor.fetchall()
+    cursor.close(); conn.close()
+    return jsonify(rows)
+
+# -----------------------------
+# Error handlers (optional)
+# -----------------------------
+@app.errorhandler(404)
+def not_found(e):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_error(e):
+    return render_template('500.html'), 500
+
+# -----------------------------
+# Run
+# -----------------------------
 if __name__ == '__main__':
-    # Use 0.0.0.0 to make it accessible on your network if needed, otherwise 127.0.0.1
-    app.run(host='127.0.0.1', port=5000, debug=True)
-
+    app.run(debug=True)

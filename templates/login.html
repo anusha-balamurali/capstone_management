@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login | Capstone Project Management</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+    <div class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card shadow-lg border-0">
+                    <div class="card-body p-4">
+                        <h3 class="text-center text-primary mb-4">Login</h3>
+
+                        {% with messages = get_flashed_messages(with_categories=true) %}
+                            {% if messages %}
+                                {% for category, message in messages %}
+                                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                                        {{ message }}
+                                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                    </div>
+                                {% endfor %}
+                            {% endif %}
+                        {% endwith %}
+
+                        <form method="POST" action="{{ url_for('login') }}">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Login As:</label>
+                                <select name="role" id="role" class="form-select" required onchange="toggleDropdowns()">
+                                    <option value="">-- Select Role --</option>
+                                    <option value="admin">Admin</option>
+                                    <option value="faculty">Faculty</option>
+                                    <option value="student">Student</option>
+                                </select>
+                            </div>
+
+                            <!-- Faculty Dropdown -->
+                            <div class="mb-3" id="faculty-dropdown" style="display:none;">
+                                <label for="faculty_id" class="form-label">Select Faculty</label>
+                                <select name="faculty_id" id="faculty_id" class="form-select">
+                                    <option value="">-- Choose Faculty --</option>
+                                    {% for faculty in faculty_list %}
+                                        <option value="{{ faculty.Faculty_ID }}">{{ faculty.Name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <!-- Student Dropdown -->
+                            <div class="mb-3" id="student-dropdown" style="display:none;">
+                                <label for="srn" class="form-label">Select Student</label>
+                                <select name="srn" id="srn" class="form-select">
+                                    <option value="">-- Choose Student --</option>
+                                    {% for student in student_list %}
+                                        <option value="{{ student.SRN }}">{{ student.Name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100 mt-3">Login</button>
+                            <a href="{{ url_for('home') }}" class="btn btn-link w-100 mt-2">Back to Home</a>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleDropdowns() {
+            const role = document.getElementById('role').value;
+            document.getElementById('faculty-dropdown').style.display = (role === 'faculty') ? 'block' : 'none';
+            document.getElementById('student-dropdown').style.display = (role === 'student') ? 'block' : 'none';
+        }
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
